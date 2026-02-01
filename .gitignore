@@ -40,10 +40,10 @@ env/
 Thumbs.db
 
 # Output files
-*.csv
+#*.csv
 *.parquet
 
 # Reports (keep directory structure, ignore generated files)
-reports/*.csv
-reports/*.txt
+#reports/*.csv
+#reports/*.txt
 !reports/.gitkeep

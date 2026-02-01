@@ -1,0 +1,4 @@
+halving_date,pre_low_date,pre_low_price,days_before_halving_to_low,pre_high_date,pre_high_price,days_before_halving_to_high,run_up_pct,run_up_days,post_high_date,post_high_price,days_after_halving_to_high,post_low_date,post_low_price,days_after_halving_to_low,drawdown_pct,drawdown_days
+2016-07-09,2015-09-27,234.0,286,2015-11-04,477.0,248,104.1,38,2017-12-17,19489.0,526,2018-12-15,3170.0,889,83.7,363
+2020-05-11,2016-08-03,542.0,1377,2017-12-17,19489.0,876,3497.2,501,2021-11-09,67518.0,547,2022-11-22,15889.0,925,76.5,378
+2024-04-19,2020-05-11,8676.0,1439,2021-11-09,67518.0,892,678.2,547,2025-10-05,123942.0,534,2026-01-30,82917.0,651,33.1,117
