@@ -198,10 +198,4 @@ def plot_signals(
     ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y"))
     fig2.tight_layout()
 
-    def _close_all(_event):
-        plt.close("all")
-
-    fig.canvas.mpl_connect("close_event", _close_all)
-    fig2.canvas.mpl_connect("close_event", _close_all)
-
     plt.show()

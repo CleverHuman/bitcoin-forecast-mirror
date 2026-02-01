@@ -114,20 +114,19 @@ def train_prophet_with_regressors(
         fourier_order=3,  # Low order to avoid overfitting
     )
 
-    if use_cycle_regressors:
-        # Add cycle regressors
+    if enable_cycle:
         model.add_regressor("reg_cycle_sin", mode="multiplicative")
         model.add_regressor("reg_cycle_cos", mode="multiplicative")
         model.add_regressor("reg_pre_halving", mode="multiplicative")
         model.add_regressor("reg_post_halving", mode="multiplicative")
 
-    if use_double_top:
-        # Add double-top pattern regressor
+    if enable_double_top:
         model.add_regressor("double_top_regressor", mode="multiplicative")
+
+    if enable_cycle_phase:
         model.add_regressor("cycle_phase_regressor", mode="multiplicative")
 
-    if use_decay:
-        # Add decay regressor for drawdown prediction
+    if enable_decay:
         model.add_regressor("decay_regressor", mode="multiplicative")
 
     model.fit(df)
@@ -135,14 +134,16 @@ def train_prophet_with_regressors(
     # Create future dataframe with regressors
     future = model.make_future_dataframe(periods=periods, freq="d")
 
-    if use_cycle_regressors:
+    if enable_cycle:
         future = create_cycle_regressors_for_prophet(future)
 
-    if use_double_top:
+    if enable_double_top:
         future = create_double_top_regressor(future, halving_averages)
+
+    if enable_cycle_phase:
         future = create_cycle_phase_regressor(future, halving_averages)
 
-    if use_decay:
+    if enable_decay:
         future = create_decay_regressor(future, decay_params, HALVING_DATES)
 
     forecast = model.predict(future)
