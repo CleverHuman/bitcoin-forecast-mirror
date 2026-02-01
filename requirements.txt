@@ -6,3 +6,8 @@ scipy>=1.10.0
 prophet>=1.1.0
 matplotlib>=3.7.0
 plotly>=5.0.0  # optional; Prophet uses it for interactive plots (suppresses "Importing plotly failed")
+
+# Live / paper trading dependencies
+python-binance>=1.0.19      # Binance API client (live trading)
+python-telegram-bot>=20.0   # Telegram alerts
+aiohttp>=3.9.0              # Async HTTP; required for paper-trading live price fetch (Binance public API)

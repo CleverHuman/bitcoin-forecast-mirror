@@ -1,0 +1,104 @@
+2026-02-01 23:13:58,505 - __main__ - INFO - Setting up trading system...
+2026-02-01 23:13:58,505 - __main__ - INFO - Using PAPER trading mode
+2026-02-01 23:13:58,505 - src.trading.alerts.telegram - WARNING - Telegram credentials not configured - alerts disabled
+2026-02-01 23:13:58,505 - __main__ - INFO - Loading historical data...
+2026-02-01 23:13:58,829 - databricks.sql.auth.retry - INFO - Received status code 200 for POST request
+2026-02-01 23:13:58,829 - databricks.sql.auth.thrift_http_client - INFO - HTTP Response with status code 200, message: OK
+2026-02-01 23:13:58,829 - databricks.sql.session - INFO - Successfully opened session 01f0ff67-7cba-1115-a51d-16884880327f
+2026-02-01 23:13:59,061 - databricks.sql.auth.retry - INFO - Received status code 200 for GET request
+2026-02-01 23:13:59,479 - databricks.sql.auth.retry - INFO - Received status code 200 for POST request
+2026-02-01 23:13:59,479 - databricks.sql.auth.thrift_http_client - INFO - HTTP Response with status code 200, message: OK
+2026-02-01 23:13:59,556 - databricks.sql.session - INFO - Closing session 01f0ff67-7cba-1115-a51d-16884880327f
+2026-02-01 23:13:59,658 - databricks.sql.auth.retry - INFO - Received status code 200 for POST request
+2026-02-01 23:13:59,658 - databricks.sql.auth.thrift_http_client - INFO - HTTP Response with status code 200, message: OK
+2026-02-01 23:13:59,917 - databricks.sql.auth.retry - INFO - Received status code 200 for POST request
+2026-02-01 23:13:59,920 - __main__ - INFO - Loaded 6727 days of historical data
+2026-02-01 23:13:59,920 - __main__ - INFO - Computing cycle metrics...
+2026-02-01 23:13:59,930 - __main__ - ERROR - Fatal error: 'ds'
+Traceback (most recent call last):
+  File "/Users/nickmoellers/Repos/Opie/bh_bitcoin_forecast/venv/lib/python3.14/site-packages/pandas/core/indexes/base.py", line 3812, in get_loc
+    return self._engine.get_loc(casted_key)
+           ~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^
+  File "pandas/_libs/index.pyx", line 167, in pandas._libs.index.IndexEngine.get_loc
+  File "pandas/_libs/index.pyx", line 196, in pandas._libs.index.IndexEngine.get_loc
+  File "pandas/_libs/hashtable_class_helper.pxi", line 7088, in pandas._libs.hashtable.PyObjectHashTable.get_item
+  File "pandas/_libs/hashtable_class_helper.pxi", line 7096, in pandas._libs.hashtable.PyObjectHashTable.get_item
+KeyError: 'ds'
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/nickmoellers/Repos/Opie/bh_bitcoin_forecast/live_trader.py", line 515, in main
+    await trader.setup()
+  File "/Users/nickmoellers/Repos/Opie/bh_bitcoin_forecast/live_trader.py", line 126, in setup
+    halving_averages = compute_halving_averages(cycle_metrics)
+  File "/Users/nickmoellers/Repos/Opie/bh_bitcoin_forecast/src/metrics/halving.py", line 309, in compute_halving_averages
+    cycle_metrics = compute_cycle_metrics(df)
+  File "/Users/nickmoellers/Repos/Opie/bh_bitcoin_forecast/src/metrics/halving.py", line 207, in compute_cycle_metrics
+    out = _ensure_sorted(df.rename(columns={date_col: "ds", price_col: "y"}))
+  File "/Users/nickmoellers/Repos/Opie/bh_bitcoin_forecast/src/metrics/halving.py", line 68, in _ensure_sorted
+    out["ds"] = pd.to_datetime(out["ds"])
+                               ~~~^^^^^^
+  File "/Users/nickmoellers/Repos/Opie/bh_bitcoin_forecast/venv/lib/python3.14/site-packages/pandas/core/frame.py", line 4113, in __getitem__
+    indexer = self.columns.get_loc(key)
+  File "/Users/nickmoellers/Repos/Opie/bh_bitcoin_forecast/venv/lib/python3.14/site-packages/pandas/core/indexes/base.py", line 3819, in get_loc
+    raise KeyError(key) from err
+KeyError: 'ds'
+2026-02-01 23:15:35,826 - __main__ - INFO - Setting up trading system...
+2026-02-01 23:15:35,826 - __main__ - INFO - Using PAPER trading mode
+2026-02-01 23:15:35,826 - src.trading.alerts.telegram - WARNING - Telegram credentials not configured - alerts disabled
+2026-02-01 23:15:35,826 - __main__ - INFO - Loading historical data...
+2026-02-01 23:15:36,407 - databricks.sql.auth.retry - INFO - Received status code 200 for POST request
+2026-02-01 23:15:36,407 - databricks.sql.auth.thrift_http_client - INFO - HTTP Response with status code 200, message: OK
+2026-02-01 23:15:36,408 - databricks.sql.session - INFO - Successfully opened session 01f0ff67-b6e6-1ea1-a415-3f5d01773c89
+2026-02-01 23:15:36,623 - databricks.sql.auth.retry - INFO - Received status code 200 for GET request
+2026-02-01 23:15:36,933 - databricks.sql.auth.retry - INFO - Received status code 200 for POST request
+2026-02-01 23:15:36,934 - databricks.sql.auth.thrift_http_client - INFO - HTTP Response with status code 200, message: OK
+2026-02-01 23:15:37,225 - databricks.sql.session - INFO - Closing session 01f0ff67-b6e6-1ea1-a415-3f5d01773c89
+2026-02-01 23:15:37,331 - databricks.sql.auth.retry - INFO - Received status code 200 for POST request
+2026-02-01 23:15:37,331 - databricks.sql.auth.thrift_http_client - INFO - HTTP Response with status code 200, message: OK
+2026-02-01 23:15:37,545 - databricks.sql.auth.retry - INFO - Received status code 200 for POST request
+2026-02-01 23:15:37,548 - __main__ - INFO - Loaded 6727 days of historical data
+2026-02-01 23:15:37,548 - __main__ - INFO - Computing cycle metrics...
+2026-02-01 23:15:37,560 - __main__ - INFO - Generating initial forecast...
+2026-02-01 23:15:37,560 - src.trading.strategy.live_strategy - INFO - Refreshing forecast...
+2026-02-01 23:15:38,028 - cmdstanpy - INFO - Chain [1] start processing
+2026-02-01 23:15:42,167 - cmdstanpy - INFO - Chain [1] done processing
+2026-02-01 23:15:42,672 - src.trading.strategy.live_strategy - INFO - Forecast refreshed: 4101 days, next prediction at 2027-01-31 00:00:00
+2026-02-01 23:15:42,672 - __main__ - INFO - Initial price set to $80,226.48
+2026-02-01 23:15:42,672 - __main__ - INFO - Trading system setup complete
+2026-02-01 23:15:42,672 - __main__ - INFO - Starting main trading loop...
+2026-02-01 23:15:42,672 - __main__ - INFO - Starting trading iteration...
+2026-02-01 23:15:42,672 - __main__ - INFO - Current price: $80,226.48
+2026-02-01 23:15:42,678 - __main__ - INFO - Signal: sell (score: -0.23)
+2026-02-01 23:15:42,678 - __main__ - INFO - Trade blocked: Signal score -0.23 below minimum 0.3
+2026-02-01 23:16:28,009 - __main__ - INFO - Received signal 2
+2026-02-01 23:16:28,009 - __main__ - INFO - Shutdown requested
+2026-02-01 23:20:12,543 - __main__ - INFO - Setting up trading system...
+2026-02-01 23:20:12,543 - __main__ - INFO - Using PAPER trading mode
+2026-02-01 23:20:12,543 - src.trading.alerts.telegram - WARNING - python-telegram-bot not installed - alerts disabled
+2026-02-01 23:20:12,543 - __main__ - INFO - Loading historical data...
+2026-02-01 23:20:12,870 - databricks.sql.auth.retry - INFO - Received status code 200 for POST request
+2026-02-01 23:20:12,870 - databricks.sql.auth.thrift_http_client - INFO - HTTP Response with status code 200, message: OK
+2026-02-01 23:20:12,870 - databricks.sql.session - INFO - Successfully opened session 01f0ff68-5bab-12a9-b011-5dd828bb99c0
+2026-02-01 23:20:13,101 - databricks.sql.auth.retry - INFO - Received status code 200 for GET request
+2026-02-01 23:20:13,602 - databricks.sql.auth.retry - INFO - Received status code 200 for POST request
+2026-02-01 23:20:13,602 - databricks.sql.auth.thrift_http_client - INFO - HTTP Response with status code 200, message: OK
+2026-02-01 23:20:13,687 - databricks.sql.session - INFO - Closing session 01f0ff68-5bab-12a9-b011-5dd828bb99c0
+2026-02-01 23:20:13,794 - databricks.sql.auth.retry - INFO - Received status code 200 for POST request
+2026-02-01 23:20:13,794 - databricks.sql.auth.thrift_http_client - INFO - HTTP Response with status code 200, message: OK
+2026-02-01 23:20:14,008 - databricks.sql.auth.retry - INFO - Received status code 200 for POST request
+2026-02-01 23:20:14,011 - __main__ - INFO - Loaded 6727 days of historical data
+2026-02-01 23:20:14,011 - __main__ - INFO - Computing cycle metrics...
+2026-02-01 23:20:14,021 - __main__ - INFO - Generating initial forecast...
+2026-02-01 23:20:14,022 - src.trading.strategy.live_strategy - INFO - Refreshing forecast...
+2026-02-01 23:20:14,518 - cmdstanpy - INFO - Chain [1] start processing
+2026-02-01 23:20:19,003 - cmdstanpy - INFO - Chain [1] done processing
+2026-02-01 23:20:19,529 - src.trading.strategy.live_strategy - INFO - Forecast refreshed: 4101 days, next prediction at 2027-01-31 00:00:00
+2026-02-01 23:20:19,530 - __main__ - INFO - Initial price set to $80,226.48 (live prices each iteration)
+2026-02-01 23:20:19,530 - __main__ - INFO - Trading system setup complete
+2026-02-01 23:20:19,530 - __main__ - INFO - Starting main trading loop...
+2026-02-01 23:20:19,530 - __main__ - INFO - Starting trading iteration...
+2026-02-01 23:20:19,808 - __main__ - INFO - Current price: $78,600.01
+2026-02-01 23:20:19,823 - __main__ - INFO - Signal: hold (score: -0.15)
+2026-02-01 23:20:19,825 - __main__ - INFO - Trade blocked: Signal score -0.15 below minimum 0.3

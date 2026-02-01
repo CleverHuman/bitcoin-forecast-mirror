@@ -135,6 +135,70 @@ def create_signal_chart(
             ax1.annotate("Halving", xy=(halving_date, ax1.get_ylim()[1]),
                         fontsize=8, color="orange", ha="center", va="bottom")
 
+    # =================================================================
+    # Plot ACTUAL and PREDICTED tops/bottoms for ALL cycles
+    # =================================================================
+    from datetime import timedelta
+
+    for idx, row in cycle_metrics.iterrows():
+        halving_date = row["halving_date"]
+
+        # Calculate predicted dates for this cycle using averages
+        predicted_top = halving_date + timedelta(days=int(averages.avg_days_to_top))
+        predicted_bottom = halving_date + timedelta(days=int(averages.avg_days_to_bottom))
+
+        # Get actual dates
+        actual_top = row.get("post_high_date")
+        actual_bottom = row.get("post_low_date")
+
+        # Determine if this is a future/current cycle (no actual data yet)
+        today = pd.Timestamp.now()
+        is_current_cycle = halving_date == HALVING_DATES[-1]  # Most recent halving
+
+        # Plot PREDICTED top (dashed line)
+        if df["ds"].min() <= predicted_top <= forecast["ds"].max():
+            ax1.axvline(predicted_top, color="red", linestyle="--", alpha=0.6, linewidth=1.5)
+            label = f"PRED TOP\n{predicted_top.strftime('%Y-%m')}"
+            if is_current_cycle:
+                label = f"PRED TOP\n{predicted_top.strftime('%Y-%m-%d')}\n(+{int(averages.avg_days_to_top)}d)"
+            ax1.annotate(label,
+                        xy=(predicted_top, ax1.get_ylim()[1] * 0.75),
+                        fontsize=7, color="red", ha="center", va="top",
+                        bbox=dict(boxstyle="round,pad=0.2", facecolor="lightyellow", alpha=0.8, edgecolor="red"))
+
+        # Plot ACTUAL top (solid line) if available
+        if pd.notna(actual_top) and df["ds"].min() <= actual_top <= forecast["ds"].max():
+            ax1.axvline(actual_top, color="darkred", linestyle="-", alpha=0.8, linewidth=2)
+            # Calculate error vs prediction
+            error_days = (actual_top - predicted_top).days
+            error_str = f"+{error_days}d" if error_days > 0 else f"{error_days}d"
+            ax1.annotate(f"ACTUAL TOP\n{actual_top.strftime('%Y-%m')}\n({error_str} vs pred)",
+                        xy=(actual_top, ax1.get_ylim()[1] * 0.92),
+                        fontsize=7, color="darkred", ha="center", va="top", fontweight="bold",
+                        bbox=dict(boxstyle="round,pad=0.2", facecolor="white", alpha=0.9))
+
+        # Plot PREDICTED bottom (dashed line)
+        if df["ds"].min() <= predicted_bottom <= forecast["ds"].max():
+            ax1.axvline(predicted_bottom, color="green", linestyle="--", alpha=0.6, linewidth=1.5)
+            label = f"PRED BTM\n{predicted_bottom.strftime('%Y-%m')}"
+            if is_current_cycle:
+                label = f"PRED BTM\n{predicted_bottom.strftime('%Y-%m-%d')}\n(+{int(averages.avg_days_to_bottom)}d)"
+            ax1.annotate(label,
+                        xy=(predicted_bottom, ax1.get_ylim()[0] + (ax1.get_ylim()[1] - ax1.get_ylim()[0]) * 0.20),
+                        fontsize=7, color="green", ha="center", va="bottom",
+                        bbox=dict(boxstyle="round,pad=0.2", facecolor="lightyellow", alpha=0.8, edgecolor="green"))
+
+        # Plot ACTUAL bottom (solid line) if available
+        if pd.notna(actual_bottom) and df["ds"].min() <= actual_bottom <= forecast["ds"].max():
+            ax1.axvline(actual_bottom, color="darkgreen", linestyle="-", alpha=0.8, linewidth=2)
+            # Calculate error vs prediction
+            error_days = (actual_bottom - predicted_bottom).days
+            error_str = f"+{error_days}d" if error_days > 0 else f"{error_days}d"
+            ax1.annotate(f"ACTUAL BTM\n{actual_bottom.strftime('%Y-%m')}\n({error_str} vs pred)",
+                        xy=(actual_bottom, ax1.get_ylim()[0] + (ax1.get_ylim()[1] - ax1.get_ylim()[0]) * 0.05),
+                        fontsize=7, color="darkgreen", ha="center", va="bottom", fontweight="bold",
+                        bbox=dict(boxstyle="round,pad=0.2", facecolor="white", alpha=0.9))
+
     # Shade buy/sell zones
     buy_zone = df[df["buy_zone"] == True]
     if not buy_zone.empty:

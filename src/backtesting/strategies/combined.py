@@ -110,6 +110,12 @@ class CombinedStrategy(BaseStrategy):
         df["volatility"] = df["y"].pct_change().rolling(30).std() * np.sqrt(365) * 100
         df["volatility"] = df["volatility"].fillna(df["volatility"].median())
 
+        # Compute rolling high/low for price-level checks
+        df["rolling_high_200"] = df["y"].rolling(200, min_periods=50).max()
+        df["rolling_low_200"] = df["y"].rolling(200, min_periods=50).min()
+        df["pct_from_high"] = (df["y"] / df["rolling_high_200"] - 1) * 100
+        df["pct_from_low"] = (df["y"] / df["rolling_low_200"] - 1) * 100
+
         # Initialize score columns
         df["cycle_score"] = 0.0
         df["forecast_score"] = 0.0
@@ -138,10 +144,15 @@ class CombinedStrategy(BaseStrategy):
             # =================================================================
             # 1. CYCLE SCORE: Where are we in the cycle?
             # =================================================================
+            cycle_phase = row.get("cycle_phase")
+            if hasattr(cycle_phase, "value"):
+                cycle_phase = cycle_phase.value  # Convert enum to string
+
             cycle_score, cycle_signal, cycle_reason = self._compute_cycle_score(
                 days_since, days_until, current_price,
                 avg_days_to_top, avg_days_to_bottom, avg_days_before_low,
-                predicted_bottom_price, predicted_top_price
+                predicted_bottom_price, predicted_top_price,
+                cycle_phase=cycle_phase,
             )
             df.loc[idx, "cycle_score"] = cycle_score
 
@@ -175,6 +186,19 @@ class CombinedStrategy(BaseStrategy):
             cycle_score = row["cycle_score"]
             forecast_score = row["forecast_score"]
             technical_score = row["technical_score"]
+            pct_from_high = row.get("pct_from_high", 0)
+            pct_from_low = row.get("pct_from_low", 0)
+
+            # CRITICAL PRICE-LEVEL OVERRIDES
+            # Never buy near recent highs (within 10% of 200-day high)
+            if pct_from_high > -10:
+                cycle_score = min(cycle_score, -0.2)  # Force bearish
+                forecast_score = min(forecast_score, 0)
+
+            # Never sell after massive crash (>50% from high)
+            if pct_from_high < -50:
+                cycle_score = max(cycle_score, 0.2)  # Force bullish
+                forecast_score = max(forecast_score, 0)
 
             # Count agreeing components
             signals = []
@@ -259,40 +283,156 @@ class CombinedStrategy(BaseStrategy):
         avg_days_before_low: float,
         predicted_bottom_price: float | None,
         predicted_top_price: float | None,
+        cycle_phase: str | None = None,
     ) -> tuple[float, int, str]:
-        """Compute cycle position score."""
+        """Compute cycle position score using both timing and phase.
+
+        Key principles:
+        - SELL BEFORE the predicted top (sell into strength)
+        - BUY BEFORE the predicted bottom (accumulate into weakness)
+        - Use weighted approach: signal strength increases as we approach target
+        - Both top and bottom are measured in DAYS SINCE HALVING
+        - Cycle phase provides additional context and score adjustments
+
+        Timeline (days since halving):
+        - 0: Halving occurs
+        - ~536: Predicted TOP (avg_days_to_top)
+        - ~822: Predicted BOTTOM (avg_days_to_bottom)
+        - ~1460: Next halving (~4 years)
+
+        Cycle Phases:
+        - ACCUMULATION: Post-drawdown, pre-run-up (BUY zone)
+        - PRE_HALVING_RUNUP: ~180 days before halving (HOLD)
+        - POST_HALVING_CONSOLIDATION: 0-120 days after (HOLD/accumulate)
+        - BULL_RUN: 120-365 days after halving (HOLD, prepare to sell)
+        - DISTRIBUTION: 365-545 days after (SELL zone)
+        - DRAWDOWN: 545+ days after (accumulate on dips)
+        """
         score = 0.0
-        signal = 0  # -1=bearish, 0=neutral, 1=bullish
         reason = ""
+        phase_adjustment = 0.0
 
-        # Buy zone: near predicted bottom (before halving)
-        buy_zone_center = avg_days_before_low
-        dist_from_buy_center = abs(days_until - buy_zone_center)
-        if dist_from_buy_center < 150:
-            buy_strength = np.exp(-(dist_from_buy_center ** 2) / (2 * 100 ** 2))
-            score += 0.5 * buy_strength
-            reason = f"buy zone ({int(days_until)}d to halving)"
+        # =================================================================
+        # PHASE-BASED ADJUSTMENTS
+        # =================================================================
+        if cycle_phase:
+            phase = cycle_phase.lower() if isinstance(cycle_phase, str) else str(cycle_phase).lower()
 
-        # Sell zone: near predicted top (after halving)
-        sell_zone_center = avg_days_to_top
-        dist_from_sell_center = abs(days_since - sell_zone_center)
-        if days_since > 90 and dist_from_sell_center < 150:
-            sell_strength = np.exp(-(dist_from_sell_center ** 2) / (2 * 100 ** 2))
-            score -= 0.5 * sell_strength
-            reason = f"sell zone ({int(days_since)}d since halving)"
+            if "accumulation" in phase:
+                # Strong buy bias during accumulation
+                phase_adjustment = 0.3
+                reason = f"ACCUMULATION phase"
+            elif "pre_halving" in phase or "runup" in phase:
+                # Hold during pre-halving run-up
+                phase_adjustment = 0.1
+                reason = f"PRE-HALVING run-up"
+            elif "consolidation" in phase:
+                # Neutral to slightly bullish after halving
+                phase_adjustment = 0.1
+                reason = f"POST-HALVING consolidation"
+            elif "bull" in phase:
+                # Bullish but prepare to sell
+                phase_adjustment = 0.0  # Neutral - timing matters more here
+                reason = f"BULL RUN phase"
+            elif "distribution" in phase:
+                # Strong sell bias during distribution
+                phase_adjustment = -0.3
+                reason = f"DISTRIBUTION phase"
+            elif "drawdown" in phase:
+                # Accumulate during drawdown
+                phase_adjustment = 0.2
+                reason = f"DRAWDOWN phase (accumulate)"
 
-        # Price confirmation
-        if predicted_bottom_price and current_price > 0:
-            price_vs_bottom = current_price / predicted_bottom_price
-            if 0.8 <= price_vs_bottom <= 1.2:
-                score += 0.2  # Near predicted bottom
-                reason += ", near predicted bottom"
+        # =================================================================
+        # SELLING: Start selling BEFORE predicted top, must finish BEFORE top
+        # =================================================================
+        # Predicted top is avg_days_to_top days AFTER halving
+        # Start selling 180 days before predicted top
+        # Peak selling 60 days before predicted top
+        # STOP selling 30 days before predicted top (don't sell at/after top)
 
-        if predicted_top_price and current_price > 0:
-            price_vs_top = current_price / predicted_top_price
-            if 0.8 <= price_vs_top <= 1.2:
-                score -= 0.2  # Near predicted top
-                reason += ", near predicted top"
+        sell_start = avg_days_to_top - 180  # Start selling 180 days before top
+        sell_peak = avg_days_to_top - 60    # Peak selling 60 days before top
+        sell_end = avg_days_to_top - 30     # STOP 30 days before (must be done by then)
+
+        if days_since >= sell_start and days_since <= sell_end:
+            # Calculate sell weight using Gaussian centered at sell_peak
+            # Weight is highest at peak, drops off towards start and end
+            sigma = (sell_end - sell_start) / 4  # ~45 days spread
+            sell_weight = np.exp(-((days_since - sell_peak) ** 2) / (2 * sigma ** 2))
+            sell_weight = max(0, min(1, sell_weight))
+
+            # Price confirmation: boost if price is high
+            price_boost = 0
+            if predicted_top_price and current_price > 0:
+                price_vs_top_pct = (current_price / predicted_top_price - 1) * 100
+                if price_vs_top_pct > -30:  # Within 30% of predicted top
+                    price_boost = 0.3
+
+            score -= (0.6 * sell_weight + price_boost)
+            days_to_top = avg_days_to_top - days_since
+            reason = f"SELL zone ({days_to_top:.0f}d to top, weight={sell_weight:.2f}, phase={cycle_phase})"
+
+        # After predicted top - too late, switch to neutral/bearish hold
+        elif days_since > avg_days_to_top:
+            days_past_top = days_since - avg_days_to_top
+            if days_past_top < 100:
+                reason = f"post-top ({days_past_top:.0f}d past, phase={cycle_phase})"
+
+        # =================================================================
+        # BUYING: Start buying BEFORE predicted bottom, must finish BEFORE bottom
+        # =================================================================
+        # Predicted bottom is avg_days_to_bottom days AFTER halving
+        # Start buying 200 days before predicted bottom
+        # Peak buying 60 days before predicted bottom
+        # STOP buying 30 days before predicted bottom (must be done by then)
+
+        buy_start = avg_days_to_bottom - 200  # Start buying 200 days before bottom
+        buy_peak = avg_days_to_bottom - 60    # Peak buying 60 days before bottom
+        buy_end = avg_days_to_bottom - 30     # STOP 30 days before (must be done by then)
+
+        if days_since >= buy_start and days_since <= buy_end:
+            # Calculate buy weight using Gaussian centered at buy_peak
+            sigma = (buy_end - buy_start) / 4  # ~42 days spread
+            buy_weight = np.exp(-((days_since - buy_peak) ** 2) / (2 * sigma ** 2))
+            buy_weight = max(0, min(1, buy_weight))
+
+            # Price confirmation: boost if price is low
+            price_boost = 0
+            if predicted_bottom_price and current_price > 0:
+                price_vs_bottom_pct = (current_price / predicted_bottom_price - 1) * 100
+                if price_vs_bottom_pct < 50:  # Within 50% above predicted bottom
+                    price_boost = 0.3
+
+            score += (0.6 * buy_weight + price_boost)
+            days_to_bottom = avg_days_to_bottom - days_since
+            reason = f"BUY zone ({days_to_bottom:.0f}d to bottom, weight={buy_weight:.2f}, phase={cycle_phase})"
+
+        # After predicted bottom - accumulation period over
+        elif days_since > avg_days_to_bottom:
+            days_past_bottom = days_since - avg_days_to_bottom
+            if days_past_bottom < 100:
+                # Early bull market - still okay to hold/accumulate
+                score += 0.2
+                reason = f"post-bottom recovery ({days_past_bottom:.0f}d past, phase={cycle_phase})"
+
+        # =================================================================
+        # NEUTRAL ZONES
+        # =================================================================
+        # Between sell_end and buy_start: post-top to pre-bottom transition
+        if days_since > sell_end and days_since < buy_start:
+            days_in_transition = days_since - sell_end
+            total_transition = buy_start - sell_end
+            reason = f"transition ({days_in_transition:.0f}/{total_transition:.0f}d to buy zone, phase={cycle_phase})"
+
+        # Early cycle: post-halving consolidation before sell zone
+        if days_since > 0 and days_since < sell_start:
+            reason = f"early cycle ({days_since:.0f}d, sell at {sell_start:.0f}d, phase={cycle_phase})"
+            # Slight bullish bias in early cycle
+            score += 0.1
+
+        # Apply phase adjustment
+        score += phase_adjustment
 
         signal = 1 if score > 0.2 else (-1 if score < -0.2 else 0)
         return np.clip(score, -1, 1), signal, reason
@@ -304,16 +444,26 @@ class CombinedStrategy(BaseStrategy):
         forecast_lookups: dict,
         threshold: float,
     ) -> tuple[float, int, str]:
-        """Compute forecast-based score using multi-timeframe analysis."""
+        """Compute forecast-based score using multi-timeframe analysis.
+
+        Factors:
+        1. Predicted price vs current price (upside/downside)
+        2. Forecast momentum (is forecast rising or falling?)
+        3. Momentum change (is momentum accelerating or decelerating?)
+        """
         if not forecast_lookups:
             return 0.0, 0, "no forecast"
 
         score = 0.0
-        signals = []
         reasons = []
 
-        # Check multiple horizons
-        weights = {7: 0.2, 30: 0.5, 90: 0.3}  # Weight longer-term more
+        # Get momentum values
+        mom_7d = forecast_lookups.get("momentum_7d", {}).get(current_date, 0) or 0
+        mom_30d = forecast_lookups.get("momentum_30d", {}).get(current_date, 0) or 0
+
+        # Check multiple horizons for predicted change
+        weights = {7: 0.2, 30: 0.5, 90: 0.3}
+        predicted_changes = {}
 
         for horizon, weight in weights.items():
             target_date = current_date + pd.Timedelta(days=horizon)
@@ -323,26 +473,50 @@ class CombinedStrategy(BaseStrategy):
                 continue
 
             pct_change = (predicted / current_price - 1) * 100
+            predicted_changes[horizon] = pct_change
 
             if abs(pct_change) >= threshold:
-                horizon_score = np.clip(pct_change / 30, -1, 1)  # 30% = max score
+                horizon_score = np.clip(pct_change / 30, -1, 1)
                 score += horizon_score * weight
-                signals.append(1 if pct_change > 0 else -1)
                 reasons.append(f"{horizon}d: {pct_change:+.1f}%")
 
-        # Momentum confirmation
-        mom_7d = forecast_lookups.get("momentum_7d", {}).get(current_date, 0)
-        mom_30d = forecast_lookups.get("momentum_30d", {}).get(current_date, 0)
+        # =================================================================
+        # MOMENTUM ANALYSIS
+        # =================================================================
+        # Rising momentum = bullish
+        # Falling momentum = bearish
+        # Momentum slowing near highs = SELL signal
+        # Momentum improving near lows = BUY signal
 
-        if mom_7d > 2 and mom_30d > 0:
+        # Strong rising momentum
+        if mom_7d > 3 and mom_30d > 2:
+            score += 0.25
+            reasons.append("strong bullish momentum")
+        # Rising momentum
+        elif mom_7d > 1 and mom_30d > 0:
             score += 0.15
             reasons.append("rising momentum")
-        elif mom_7d < -2 and mom_30d < 0:
+        # Strong falling momentum
+        elif mom_7d < -3 and mom_30d < -2:
+            score -= 0.25
+            reasons.append("strong bearish momentum")
+        # Falling momentum
+        elif mom_7d < -1 and mom_30d < 0:
             score -= 0.15
             reasons.append("falling momentum")
 
+        # Momentum divergence (short-term vs long-term)
+        # Short-term slowing while long-term still up = potential top
+        if mom_7d < 0 and mom_30d > 2:
+            score -= 0.2
+            reasons.append("momentum slowing (potential top)")
+        # Short-term improving while long-term still down = potential bottom
+        elif mom_7d > 0 and mom_30d < -2:
+            score += 0.2
+            reasons.append("momentum improving (potential bottom)")
+
         signal = 1 if score > 0.2 else (-1 if score < -0.2 else 0)
-        reason = ", ".join(reasons) if reasons else "neutral forecast"
+        reason = ", ".join(reasons) if reasons else "neutral"
 
         return np.clip(score, -1, 1), signal, reason
 
