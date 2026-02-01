@@ -13,6 +13,7 @@ Strategies compared:
 """
 
 import argparse
+import os
 from datetime import datetime
 from pathlib import Path
 
@@ -71,8 +72,20 @@ Then run paper trading:
     parser.add_argument(
         "--capital",
         type=float,
-        default=10000,
-        help="Initial capital for backtest (default: 10000)",
+        default=float(os.getenv("INITIAL_CAPITAL", "10000")),
+        help="Initial capital for backtest (default: from .env or 10000)",
+    )
+    parser.add_argument(
+        "--position-size",
+        type=float,
+        default=float(os.getenv("BACKTEST_POSITION_SIZE", "0.25")),
+        help="Fraction of capital per trade (default: from .env or 0.25)",
+    )
+    parser.add_argument(
+        "--max-position",
+        type=float,
+        default=float(os.getenv("BACKTEST_MAX_POSITION", "1.0")),
+        help="Max fraction of capital in BTC (default: from .env or 1.0)",
     )
     parser.add_argument(
         "--no-save",
@@ -121,11 +134,12 @@ Then run paper trading:
 
     config = BacktestConfig(
         initial_capital=args.capital,
-        position_size=0.25,
-        max_position=1.0,
+        position_size=args.position_size,
+        max_position=args.max_position,
         fee_pct=0.1,
         slippage_pct=0.05,
     )
+    print(f"  Config: capital=${args.capital:,.0f}, position_size={args.position_size:.0%}, max_position={args.max_position:.0%}")
 
     strategies = [
         CombinedStrategy(

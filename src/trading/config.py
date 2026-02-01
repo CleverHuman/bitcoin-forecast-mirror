@@ -14,8 +14,8 @@ class TradingConfig:
         paper_use_live_prices: In paper mode, fetch live price from Binance public API (no key)
         use_ws_price: Use WebSocket for live price (real-time); if False, REST poll each iteration
         initial_capital: Starting capital in USD
-        max_position_pct: Maximum position size as % of capital (0.10 = 10%)
-        max_total_exposure_pct: Maximum total exposure as % of capital
+        max_position_pct: Maximum position size as fraction of capital (0.10 = 10%, 2.0 = 2x leverage)
+        max_total_exposure_pct: Maximum total exposure as fraction of capital (0.70 = 70%, 2.0 = 2x)
         daily_loss_limit_pct: Daily loss limit as % of capital (triggers pause)
         weekly_loss_limit_pct: Weekly loss limit as % of capital (triggers pause)
         max_drawdown_pct: Maximum drawdown from peak (triggers kill switch)
@@ -166,11 +166,12 @@ class TradingConfig:
         if self.initial_capital <= 0:
             errors.append("initial_capital must be positive")
 
-        if not 0 < self.max_position_pct <= 1:
-            errors.append("max_position_pct must be between 0 and 1")
+        # Allow > 1 for leverage (e.g. 2.0 = 2x)
+        if not 0 < self.max_position_pct <= 10:
+            errors.append("max_position_pct must be between 0 and 10 (use > 1 for leverage)")
 
-        if not 0 < self.max_total_exposure_pct <= 1:
-            errors.append("max_total_exposure_pct must be between 0 and 1")
+        if not 0 < self.max_total_exposure_pct <= 10:
+            errors.append("max_total_exposure_pct must be between 0 and 10 (use > 1 for leverage)")
 
         if not 0 < self.daily_loss_limit_pct <= 1:
             errors.append("daily_loss_limit_pct must be between 0 and 1")
