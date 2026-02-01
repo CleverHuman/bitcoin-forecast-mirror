@@ -9,5 +9,6 @@ plotly>=5.0.0  # optional; Prophet uses it for interactive plots (suppresses "Im
 
 # Live / paper trading dependencies
 python-binance>=1.0.19      # Binance API client (live trading)
+pybit>=5.6.0                # Bybit API client (live trading, v5)
 python-telegram-bot>=20.0   # Telegram alerts
-aiohttp>=3.9.0              # Async HTTP; required for paper-trading live price fetch (Binance public API)
+aiohttp>=3.9.0              # Async HTTP; paper-trading live price fetch + Bybit/Binance WS

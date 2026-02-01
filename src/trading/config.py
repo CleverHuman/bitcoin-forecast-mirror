@@ -12,6 +12,7 @@ class TradingConfig:
     Attributes:
         paper_trading: If True, use simulated exchange (no real trades)
         paper_use_live_prices: In paper mode, fetch live price from Binance public API (no key)
+        use_ws_price: Use WebSocket for live price (real-time); if False, REST poll each iteration
         initial_capital: Starting capital in USD
         max_position_pct: Maximum position size as % of capital (0.10 = 10%)
         max_total_exposure_pct: Maximum total exposure as % of capital
@@ -30,8 +31,12 @@ class TradingConfig:
         symbol: Trading pair symbol
         base_asset: Base asset (e.g., BTC)
         quote_asset: Quote asset (e.g., USDT)
+        exchange: Exchange to use: "binance" or "bybit"
+        bybit_testnet: If True, use Bybit testnet (demo account)
         binance_api_key: Binance API key (for live trading)
         binance_api_secret: Binance API secret (for live trading)
+        bybit_api_key: Bybit API key (system-generated public key)
+        bybit_api_secret: Bybit API secret (system-generated private key)
         telegram_token: Telegram bot token for alerts
         telegram_chat_id: Telegram chat ID for alerts
     """
@@ -39,6 +44,7 @@ class TradingConfig:
     # Mode
     paper_trading: bool = True
     paper_use_live_prices: bool = True  # In paper mode, fetch live price from Binance (no API key)
+    use_ws_price: bool = True  # Use WebSocket for live price (real-time); if False, use REST each iteration
 
     # Capital & Position Sizing
     initial_capital: float = 25000.0
@@ -70,9 +76,16 @@ class TradingConfig:
     base_asset: str = "BTC"
     quote_asset: str = "USDT"
 
+    # Exchange selection (binance | bybit)
+    exchange: str = "binance"
+    # Bybit demo/testnet: use testnet.bybit.com (demo account). Mainnet if False.
+    bybit_testnet: bool = False
+
     # API credentials (loaded from environment)
     binance_api_key: str = ""
     binance_api_secret: str = ""
+    bybit_api_key: str = ""      # System-generated API key (public)
+    bybit_api_secret: str = ""   # System-generated API secret (private)
     telegram_token: str = ""
     telegram_chat_id: str = ""
 
@@ -86,6 +99,7 @@ class TradingConfig:
         Environment variables (all optional, defaults used if not set):
             PAPER_TRADING: "true" or "false"
             PAPER_USE_LIVE_PRICES: "true" or "false" (paper mode: use live price from Binance)
+            USE_WS_PRICE: "true" or "false" (use WebSocket for price; no API key needed for public stream)
             INITIAL_CAPITAL: Starting capital in USD
             MAX_POSITION_PCT: Max position size as decimal (e.g., 0.10)
             MAX_TOTAL_EXPOSURE_PCT: Max total exposure as decimal
@@ -102,8 +116,12 @@ class TradingConfig:
             MIN_TRADE_INTERVAL_HOURS: Hours between trades
             FORECAST_REFRESH_HOURS: Hours between forecast refreshes
             TRADING_SYMBOL: Trading pair (default: BTCUSDT)
+            EXCHANGE: "binance" or "bybit"
+            BYBIT_TESTNET: "true" to use Bybit demo/testnet (testnet.bybit.com)
             BINANCE_API_KEY: Binance API key
             BINANCE_API_SECRET: Binance API secret
+            BYBIT_API_KEY: Bybit API key (system-generated)
+            BYBIT_API_SECRET: Bybit API secret (system-generated)
             TELEGRAM_TOKEN: Telegram bot token
             TELEGRAM_CHAT_ID: Telegram chat ID
             LOG_LEVEL: Logging level (DEBUG, INFO, WARNING, ERROR)
@@ -111,6 +129,7 @@ class TradingConfig:
         return cls(
             paper_trading=os.getenv("PAPER_TRADING", "true").lower() == "true",
             paper_use_live_prices=os.getenv("PAPER_USE_LIVE_PRICES", "true").lower() == "true",
+            use_ws_price=os.getenv("USE_WS_PRICE", "true").lower() == "true",
             initial_capital=float(os.getenv("INITIAL_CAPITAL", "25000")),
             max_position_pct=float(os.getenv("MAX_POSITION_PCT", "0.10")),
             max_total_exposure_pct=float(os.getenv("MAX_TOTAL_EXPOSURE_PCT", "0.70")),
@@ -129,8 +148,12 @@ class TradingConfig:
             symbol=os.getenv("TRADING_SYMBOL", "BTCUSDT"),
             base_asset=os.getenv("BASE_ASSET", "BTC"),
             quote_asset=os.getenv("QUOTE_ASSET", "USDT"),
+            exchange=os.getenv("EXCHANGE", "binance").lower(),
+            bybit_testnet=os.getenv("BYBIT_TESTNET", "false").lower() == "true",
             binance_api_key=os.getenv("BINANCE_API_KEY", ""),
             binance_api_secret=os.getenv("BINANCE_API_SECRET", ""),
+            bybit_api_key=os.getenv("BYBIT_API_KEY", ""),
+            bybit_api_secret=os.getenv("BYBIT_API_SECRET", ""),
             telegram_token=os.getenv("TELEGRAM_TOKEN", ""),
             telegram_chat_id=os.getenv("TELEGRAM_CHAT_ID", ""),
             log_level=os.getenv("LOG_LEVEL", "INFO"),
@@ -174,10 +197,18 @@ class TradingConfig:
             errors.append("min_signal_score must be between 0 and 1")
 
         if not self.paper_trading:
-            if not self.binance_api_key:
-                errors.append("binance_api_key required for live trading")
-            if not self.binance_api_secret:
-                errors.append("binance_api_secret required for live trading")
+            if self.exchange == "binance":
+                if not self.binance_api_key:
+                    errors.append("binance_api_key required for live trading")
+                if not self.binance_api_secret:
+                    errors.append("binance_api_secret required for live trading")
+            elif self.exchange == "bybit":
+                if not self.bybit_api_key:
+                    errors.append("bybit_api_key required for live trading")
+                if not self.bybit_api_secret:
+                    errors.append("bybit_api_secret required for live trading")
+            else:
+                errors.append("EXCHANGE must be 'binance' or 'bybit'")
 
         return errors
 

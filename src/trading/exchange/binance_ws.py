@@ -66,12 +66,16 @@ class BinanceWebSocket:
         reconnect_delay = self._reconnect_delay
 
         while self._running:
+            client = None
             try:
-                # Create client
-                client = await self._AsyncClient.create(
-                    api_key=self.config.binance_api_key,
-                    api_secret=self.config.binance_api_secret,
-                )
+                # Public ticker stream works without API keys; use credentials only if set
+                if self.config.binance_api_key and self.config.binance_api_secret:
+                    client = await self._AsyncClient.create(
+                        api_key=self.config.binance_api_key,
+                        api_secret=self.config.binance_api_secret,
+                    )
+                else:
+                    client = await self._AsyncClient.create()
 
                 # Create socket manager
                 bm = self._BinanceSocketManager(client)
@@ -126,8 +130,8 @@ class BinanceWebSocket:
 
         event_type = msg["e"]
 
-        if event_type == "24hrMiniTicker":
-            # Mini ticker with current price
+        if event_type in ("24hrMiniTicker", "24hrTicker"):
+            # Mini or full 24h ticker: current/last price
             symbol = msg["s"]
             price = Decimal(msg["c"])  # Current close price
 

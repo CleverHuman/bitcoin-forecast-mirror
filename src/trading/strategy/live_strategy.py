@@ -105,6 +105,15 @@ class LiveStrategy:
 
         return hours_since_refresh >= self.config.forecast_refresh_hours
 
+    def hours_until_refresh(self) -> float | None:
+        """Hours until forecast should be refreshed (None if no forecast yet)."""
+        if self.forecast_result is None or self.last_forecast_time is None:
+            return None
+        hours_since = (
+            datetime.now() - self.last_forecast_time
+        ).total_seconds() / 3600
+        return max(0.0, self.config.forecast_refresh_hours - hours_since)
+
     def get_signal(
         self,
         current_price: float,
@@ -143,10 +152,21 @@ class LiveStrategy:
             current_price, current_date
         )
 
+        # Down-weight forecast when stale (rely more on tactical as forecast ages)
+        hours_since = (
+            (datetime.now() - self.last_forecast_time).total_seconds() / 3600
+            if self.last_forecast_time else self.config.forecast_refresh_hours
+        )
+        refresh_hours = max(1, self.config.forecast_refresh_hours)
+        # At 0h use full forecast_weight; at refresh_hours use at least 20% forecast
+        age_factor = max(0.2, 1.0 - (hours_since / refresh_hours) * 0.8)
+        effective_forecast_w = self.config.forecast_weight * age_factor
+        effective_tactical_w = 1.0 - effective_forecast_w
+
         # Weighted combination
         combined_score = (
-            self.config.forecast_weight * forecast_score
-            + self.config.tactical_weight * tactical_score
+            effective_forecast_w * forecast_score
+            + effective_tactical_w * tactical_score
         )
 
         # Clip to valid range
@@ -159,8 +179,8 @@ class LiveStrategy:
         direction = "bullish" if combined_score > 0 else "bearish" if combined_score < 0 else "neutral"
         reason = (
             f"{direction.capitalize()} signal: "
-            f"forecast={forecast_score:.2f} ({self.config.forecast_weight:.0%}), "
-            f"tactical={tactical_score:.2f} ({self.config.tactical_weight:.0%})"
+            f"forecast={forecast_score:.2f} ({effective_forecast_w:.0%}), "
+            f"tactical={tactical_score:.2f} ({effective_tactical_w:.0%})"
         )
 
         metadata = None
@@ -168,8 +188,9 @@ class LiveStrategy:
             metadata = {
                 "forecast_score": forecast_score,
                 "tactical_score": tactical_score,
-                "forecast_weight": self.config.forecast_weight,
-                "tactical_weight": self.config.tactical_weight,
+                "forecast_weight": effective_forecast_w,
+                "tactical_weight": effective_tactical_w,
+                "forecast_age_hours": hours_since,
                 "forecast_details": forecast_details,
                 "tactical_details": tactical_details,
                 "current_price": current_price,

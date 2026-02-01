@@ -20,6 +20,7 @@ import asyncio
 import logging
 import signal
 import sys
+import time
 from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
@@ -42,7 +43,10 @@ from src.trading.risk.risk_manager import RiskManager
 from src.trading.strategy.live_strategy import LiveStrategy
 from src.trading.data.data_manager import DataManager
 from src.trading.alerts.telegram import TelegramAlerter
-from src.trading.exchange.binance_public import fetch_spot_price
+from src.trading.exchange.binance_public import fetch_spot_price as fetch_binance_spot_price
+from src.trading.exchange.binance_ws import BinanceWebSocket
+from src.trading.exchange.bybit_public import fetch_spot_price as fetch_bybit_spot_price
+from src.trading.exchange.bybit_ws import BybitWebSocket
 from src.backtesting.strategies.base import Signal
 
 # Configure logging
@@ -84,6 +88,9 @@ class LiveTrader:
         self.alerter = None
         self.forecaster = None
         self._paper_start_price: Decimal | None = None  # For B&H benchmark in paper mode
+        self._ws_price: BinanceWebSocket | BybitWebSocket | None = None  # WebSocket for real-time price (optional)
+        self._live_price_task: asyncio.Task | None = None  # Backup: logs live price if no WS
+        self._last_ws_price_log_time: float = 0.0  # Throttle: log at most once per second on WS tick
 
     async def setup(self) -> None:
         """Initialize all trading components."""
@@ -100,9 +107,16 @@ class LiveTrader:
             self.exchange = PaperExchange(self.config)
         else:
             logger.warning("LIVE trading mode - real money at risk!")
-            # Import here to avoid dependency if not using live
-            from src.trading.exchange.binance_client import BinanceClient
-            self.exchange = BinanceClient(self.config)
+            if self.config.exchange == "bybit":
+                from src.trading.exchange.bybit_client import BybitClient
+                self.exchange = BybitClient(self.config)
+                logger.info(
+                    "Using Bybit (testnet/demo)" if self.config.bybit_testnet else "Using Bybit"
+                )
+            else:
+                from src.trading.exchange.binance_client import BinanceClient
+                self.exchange = BinanceClient(self.config)
+                logger.info("Using Binance")
 
         # Initialize trackers
         self.position_tracker = PositionTracker(self.config)
@@ -155,7 +169,47 @@ class LiveTrader:
             live_note = " (live prices each iteration)" if self.config.paper_use_live_prices else " (static price until live fetch enabled)"
             logger.info(f"Initial price set to ${latest_price:,.2f}{live_note}")
 
+        # WebSocket for real-time price (paper or live; no API key needed for public stream)
+        use_live_price = self.config.paper_use_live_prices or not self.config.paper_trading
+        if use_live_price and self.config.use_ws_price:
+            self.data_manager.subscribe_price_updates(lambda _s, _p: None)  # Register so exchange updates flow to data_manager
+            if self.config.exchange == "bybit":
+                self._ws_price = BybitWebSocket(self.config)
+            else:
+                self._ws_price = BinanceWebSocket(self.config)
+
+            def _on_ws_price(symbol: str, price: Decimal) -> None:
+                self.exchange.set_price(symbol, price)
+                # Log price on every WS update, throttled to once per second so you see it live
+                now = time.time()
+                if now - self._last_ws_price_log_time >= 1.0:
+                    logger.info(f"Live price: ${price:,.2f}")
+                    self._last_ws_price_log_time = now
+
+            self._ws_price.on_price(_on_ws_price)
+            await self._ws_price.start()
+            logger.info("WebSocket price stream started (real-time); price logged on every tick (throttled 1s)")
+
+        # When live prices but no WebSocket, fallback: log price every 30s
+        if use_live_price and not self.config.use_ws_price:
+            self._live_price_task = asyncio.create_task(self._live_price_logger_loop())
+            logger.info("Live price logging started (every 30s)")
+
         logger.info("Trading system setup complete")
+
+    async def _live_price_logger_loop(self) -> None:
+        """Log current price every 30s so you can see live pricing in the console."""
+        while self.running and not self._shutdown_event.is_set():
+            try:
+                await asyncio.sleep(30)
+                if not self.running or self._shutdown_event.is_set():
+                    break
+                price = await self.exchange.get_price(self.config.symbol)
+                logger.info(f"Live price: ${price:,.2f}")
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.debug("Live price log skipped: %s", e)
 
     async def run(self) -> None:
         """Run the main trading loop."""
@@ -191,18 +245,28 @@ class LiveTrader:
         """Execute one iteration of the trading loop."""
         logger.info("Starting trading iteration...")
 
-        # In paper mode, optionally fetch live price so simulation uses real market moves
-        if self.config.paper_trading and self.config.paper_use_live_prices:
-            live_price = await fetch_spot_price(self.config.symbol)
+        # In paper mode without WS, fetch live price each iteration; with WS price is already real-time
+        if self.config.paper_trading and self.config.paper_use_live_prices and not (self._ws_price and self._ws_price.is_running):
+            if self.config.exchange == "bybit":
+                live_price = await fetch_bybit_spot_price(
+                    self.config.symbol, testnet=self.config.bybit_testnet
+                )
+            else:
+                live_price = await fetch_binance_spot_price(self.config.symbol)
             if live_price is not None:
                 self.exchange.set_price(self.config.symbol, live_price)
-            # If fetch failed, keep previous price (already set at startup or last iteration)
 
-        # Refresh forecast if needed
+        # Refresh forecast if needed (run in thread so main loop stays responsive)
         if self.strategy.needs_refresh():
             logger.info("Refreshing forecast...")
             historical_df = self.data_manager.get_historical()
-            self.strategy.refresh_forecast(historical_df)
+            await asyncio.to_thread(
+                self.strategy.refresh_forecast,
+                historical_df,
+            )
+            next_refresh = self.strategy.hours_until_refresh()
+            if next_refresh is not None:
+                logger.info("Forecast refreshed; next refresh in %.1f hours", next_refresh)
 
         # Get current price (from exchange; in paper mode may have been set from live feed above)
         current_price = await self.data_manager.fetch_current_price()
@@ -448,7 +512,16 @@ class LiveTrader:
             except Exception as e:
                 logger.debug("Could not compute B&H at shutdown: %s", e)
 
-        # Close connections
+        # Stop live price logger and WebSocket
+        if self._live_price_task and not self._live_price_task.done():
+            self._live_price_task.cancel()
+            try:
+                await self._live_price_task
+            except asyncio.CancelledError:
+                pass
+        if self._ws_price and self._ws_price.is_running:
+            await self._ws_price.stop()
+            logger.info("WebSocket price stream stopped")
         if self.data_manager:
             await self.data_manager.close()
         if self.exchange:
