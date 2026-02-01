@@ -90,11 +90,14 @@ def validate_forecast(
         f"{forecast_col}_upper": "predicted_upper",
     })
 
+    # Filter out zero/invalid actual values
+    comparison = comparison[comparison["actual"] > 0].copy()
+
     # Calculate errors
     comparison["error"] = comparison["predicted"] - comparison["actual"]
     comparison["abs_error"] = comparison["error"].abs()
     comparison["pct_error"] = (comparison["error"] / comparison["actual"]) * 100
-    comparison["abs_pct_error"] = comparison["pct_error"].abs()
+    comparison["abs_pct_error"] = comparison["pct_error"].abs().clip(upper=500)  # Cap at 500%
 
     # Check if actual is within confidence interval
     comparison["within_ci"] = (
@@ -121,24 +124,36 @@ def validate_forecast(
     print(f"  95% CI Coverage:          {ci_coverage:.1f}%")
     print(f"  Direction Accuracy:       {direction_accuracy:.1f}%")
 
-    # Monthly breakdown
+    # Monthly breakdown - recalculate from clean data
     print(f"\n  MONTHLY BREAKDOWN")
-    print(f"  {'-'*40}")
+    print(f"  {'-'*60}")
+    print(f"  {'Month':<10} {'Actual':>12} {'Predicted':>12} {'Error %':>10} {'Rating':>10}")
+    print(f"  {'-'*60}")
     comparison["month"] = comparison["ds"].dt.to_period("M")
     monthly = comparison.groupby("month").agg({
-        "abs_pct_error": "mean",
-        "within_ci": "mean",
-        "actual": "last",
-        "predicted": "last",
+        "actual": "mean",
+        "predicted": "mean",
     }).reset_index()
 
     for _, row in monthly.iterrows():
         month_str = str(row["month"])
-        mape_m = row["abs_pct_error"]
-        ci_m = row["within_ci"] * 100
         actual_m = row["actual"]
         pred_m = row["predicted"]
-        print(f"  {month_str}: MAPE={mape_m:.1f}%, CI={ci_m:.0f}%, Actual=${actual_m:,.0f}, Pred=${pred_m:,.0f}")
+        if actual_m > 0:
+            pct_err = (pred_m - actual_m) / actual_m * 100
+        else:
+            pct_err = 0
+
+        # Rate the prediction
+        if abs(pct_err) < 10:
+            rating = "★★★"
+        elif abs(pct_err) < 25:
+            rating = "★★"
+        elif abs(pct_err) < 50:
+            rating = "★"
+        else:
+            rating = ""
+        print(f"  {month_str:<10} ${actual_m:>10,.0f} ${pred_m:>10,.0f} {pct_err:>+9.1f}% {rating:>10}")
 
     # 6. Plot
     print("\n[5/5] Creating visualization...")
@@ -258,5 +273,5 @@ def create_validation_chart(
 
 
 if __name__ == "__main__":
-    # Validate using data up to end of 2022
-    validate_forecast(cutoff_date="2022-12-31", forecast_periods=365 * 4)
+    # Validate using data up to end of 2024, predict 2025+
+    validate_forecast(cutoff_date="2024-12-31", forecast_periods=365 * 2)
