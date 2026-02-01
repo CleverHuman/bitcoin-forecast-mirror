@@ -39,6 +39,10 @@ load_dotenv()
 # Forecast horizon in days (set FORECAST_DAYS in .env; default 365)
 FORECAST_DAYS = int(os.getenv("FORECAST_DAYS", "365"))
 
+# Backtest config from .env
+INITIAL_CAPITAL = float(os.getenv("INITIAL_CAPITAL", "10000"))
+BACKTEST_POSITION_SIZE = float(os.getenv("BACKTEST_POSITION_SIZE", "1.0"))
+
 # Reports directory
 REPORTS_DIR = Path(__file__).parent / "reports"
 REPORTS_DIR.mkdir(exist_ok=True)
@@ -464,8 +468,8 @@ Examples:
             df_signals = generate_signals(df, cycle_weight=0.4, technical_weight=0.6)
             current = get_current_signal(df_signals, cycle_metrics=cycle_metrics, averages=averages)
 
-            print("Running backtest...")
-            backtest = backtest_signals(df_signals, initial_capital=10000)
+            print(f"Running backtest (capital=${INITIAL_CAPITAL:,.0f}, position_size={BACKTEST_POSITION_SIZE:.0%})...")
+            backtest = backtest_signals(df_signals, initial_capital=INITIAL_CAPITAL, position_size=BACKTEST_POSITION_SIZE)
             print_signal_summary(current, backtest)
         else:
             df_signals = df.copy()
