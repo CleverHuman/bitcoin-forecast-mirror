@@ -23,16 +23,20 @@ from src.metrics import (
 
 
 def _env_bool(key: str, default: bool = True) -> bool:
-    """Read a boolean from environment variable."""
+    """Read a boolean from environment variable (at call time, not import time)."""
     val = os.getenv(key, str(default)).lower()
     return val in ("true", "1", "yes", "on")
 
 
-# Regressor toggles from environment
-USE_CYCLE_REGRESSORS = _env_bool("REGRESSOR_CYCLE", True)
-USE_DOUBLE_TOP = _env_bool("REGRESSOR_DOUBLE_TOP", True)
-USE_CYCLE_PHASE = _env_bool("REGRESSOR_CYCLE_PHASE", True)
-USE_DECAY = _env_bool("REGRESSOR_DECAY", True)
+def get_regressor_config() -> dict[str, bool]:
+    """Get regressor toggles from environment at call time."""
+    return {
+        "cycle": _env_bool("REGRESSOR_CYCLE", True),
+        "double_top": _env_bool("REGRESSOR_DOUBLE_TOP", True),
+        "cycle_phase": _env_bool("REGRESSOR_CYCLE_PHASE", True),
+        "decay": _env_bool("REGRESSOR_DECAY", True),
+        "ensemble_adjust": _env_bool("REGRESSOR_ENSEMBLE_ADJUST", True),
+    }
 
 
 def train_prophet_with_regressors(
@@ -65,18 +69,21 @@ def train_prophet_with_regressors(
     """
     df = df.copy()
 
+    # Get env toggles at call time (after load_dotenv)
+    cfg = get_regressor_config()
+
     # Check env toggles combined with data availability
-    enable_cycle = use_cycle_regressors and USE_CYCLE_REGRESSORS
+    enable_cycle = use_cycle_regressors and cfg["cycle"]
     enable_double_top = (
-        USE_DOUBLE_TOP
+        cfg["double_top"]
         and halving_averages is not None
         and halving_averages.double_top_frequency > 0
     )
     enable_cycle_phase = (
-        USE_CYCLE_PHASE
+        cfg["cycle_phase"]
         and halving_averages is not None
     )
-    enable_decay = USE_DECAY and decay_params is not None
+    enable_decay = cfg["decay"] and decay_params is not None
 
     # Log which regressors are active
     print(f"  Regressors: cycle={enable_cycle}, double_top={enable_double_top}, "
@@ -201,30 +208,38 @@ def train_simple_ensemble(
     # Add cycle features to forecast
     forecast = add_cycle_features(forecast, date_col="ds")
 
-    # Compute cycle adjustment multiplier
-    # Pre-halving: boost forecast (run-up expected)
-    # Post-halving peak zone: reduce forecast (distribution)
-    # Drawdown: reduce forecast using decay-predicted severity
+    # Get config to check if ensemble adjustments are enabled
+    cfg = get_regressor_config()
 
+    # Compute cycle adjustment multiplier (can be disabled via REGRESSOR_ENSEMBLE_ADJUST=false)
     adjustment = np.ones(len(forecast))
 
-    # Pre-halving run-up boost (up to +20%)
-    pre_mask = forecast["pre_halving_weight"] > 0
-    adjustment[pre_mask] += forecast.loc[pre_mask, "pre_halving_weight"] * 0.2
+    if cfg["ensemble_adjust"]:
+        # Pre-halving: boost forecast (run-up expected)
+        # Post-halving peak zone: reduce forecast (distribution)
+        # Drawdown: reduce forecast using decay-predicted severity
 
-    # Post-halving zones
-    days_since = forecast["days_since_halving"].fillna(0)
+        # Pre-halving run-up boost (up to +20%)
+        pre_mask = forecast["pre_halving_weight"] > 0
+        adjustment[pre_mask] += forecast.loc[pre_mask, "pre_halving_weight"] * 0.2
 
-    # Bull run boost (120-365 days after)
-    bull_mask = (days_since > 120) & (days_since <= 365)
-    bull_factor = 1 - (days_since[bull_mask] - 120) / 245  # Fades from 1 to 0
-    adjustment[bull_mask] += bull_factor * 0.15
+        # Post-halving zones
+        days_since = forecast["days_since_halving"].fillna(0)
 
-    # Distribution/drawdown reduction
-    # Note: Prophet's decay_regressor handles most of the drawdown adjustment
-    # This is just a small additional nudge for the ensemble weighting
-    dist_mask = days_since > 365
-    adjustment[dist_mask] -= 0.05  # Small fixed reduction (Prophet handles the rest)
+        # Bull run boost (120-365 days after)
+        bull_mask = (days_since > 120) & (days_since <= 365)
+        bull_factor = 1 - (days_since[bull_mask] - 120) / 245  # Fades from 1 to 0
+        adjustment[bull_mask] += bull_factor * 0.15
+
+        # Distribution/drawdown reduction
+        # Note: Prophet's decay_regressor handles most of the drawdown adjustment
+        # This is just a small additional nudge for the ensemble weighting
+        dist_mask = days_since > 365
+        adjustment[dist_mask] -= 0.05  # Small fixed reduction (Prophet handles the rest)
+
+        print(f"  Ensemble adjustment: enabled")
+    else:
+        print(f"  Ensemble adjustment: disabled (using raw Prophet output)")
 
     # Apply weighted adjustment
     forecast["cycle_adjustment"] = adjustment
