@@ -180,11 +180,34 @@ Detects double-top cycle pattern with Gaussian-weighted continuous encoding:
 
 #### CYCLE_PHASE Regressor (`halving.py`)
 
-Smooth phase encoding (vectorized, no per-row loops):
+Encodes cycle phase with **bullish pre-halving** behavior. Uses per-halving data from `cycle_metrics` when available.
 
-- **Pre-halving ramp**: -0.3 → 0 as halving approaches
-- **Post-halving bull**: 0 → 0.8 (peaks at `avg_days_to_top`)
-- **Drawdown**: 0.8 → -0.3 (deepest at `avg_days_to_bottom`)
+**Timeline:**
+```
+         Pre-halving          |  Consol  |   Bull   |  Dist/DD  | Bear
+         ────────────────────►|◄────────►|◄────────►|◄─────────►|◄────
+Value:   0 ──────────► +0.5   | +0.5→0   | 0→+0.3   | +0.3→-0.3 | -0.2
+         (bullish run-up)     | (neutral)| (bullish)| (bearish) |
+```
+
+**Phases:**
+
+| Phase | Days | Regressor Value | Behavior |
+|-------|------|-----------------|----------|
+| Pre-halving run-up | -run_up_days → 0 | 0 → +0.5 | **Bullish** - ramps UP toward halving |
+| Post-halving consolidation | 0 → 120 | +0.5 → 0 | Neutral - drops from halving peak |
+| Bull run | 120 → peak_day | 0 → +0.3 | Moderately bullish |
+| Distribution/Drawdown | peak_day → bottom_day | +0.3 → -0.3 | Bearish - ramps down |
+| Late bear | bottom_day+ | -0.2 | Stays moderately bearish |
+
+**Data sources from `cycle_metrics`:**
+- `days_after_halving_to_high` → peak timing for each halving
+- `days_after_halving_to_low` → bottom timing for each halving
+- `run_up_days` → pre-halving ramp duration
+
+**Future halving dampening:**
+- Halvings beyond historical data get **50% dampened** effect
+- Prevents forecast skyrocketing into unknown territory
 
 #### DECAY Regressor (`decay.py`)
 

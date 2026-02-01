@@ -475,23 +475,26 @@ def create_cycle_phase_regressor(
     averages: HalvingAverages,
     date_col: str = "ds",
     halving_dates: pd.DatetimeIndex | None = None,
+    cycle_metrics: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     """Create a continuous regressor encoding cycle phase for Prophet.
 
-    VECTORIZED implementation - no per-row loops.
+    VECTORIZED implementation using per-halving data from cycle_metrics when available.
 
-    Encodes position within the halving cycle as a smooth value from -1 to 1:
-    - Pre-halving ramp: starts at -0.3, rises to 0 at halving
-    - Post-halving bull run: 0 to 0.8 (peaks at avg_days_to_top)
-    - Distribution/drawdown: 0.8 down to -0.3
-
-    Uses Gaussian smoothing to avoid discontinuities that crash Prophet.
+    Encodes position within the halving cycle based on historical behavior:
+    - Accumulation (bear market): slightly negative (-0.2)
+    - Pre-halving run-up: BULLISH, ramps UP to +0.5 at halving
+    - Post-halving consolidation (0-120 days): neutral, drops to 0
+    - Bull run (120 to peak): moderately bullish (+0.3)
+    - Distribution/drawdown (after peak): bearish, ramps down to -0.3
 
     Args:
         df: DataFrame with date column.
-        averages: HalvingAverages with cycle timing data.
+        averages: HalvingAverages with cycle timing data (used as fallback).
         date_col: Name of date column.
         halving_dates: Halving dates to use.
+        cycle_metrics: DataFrame from compute_cycle_metrics() with per-halving data.
+            If provided, uses actual timing for each halving instead of averages.
 
     Returns:
         DataFrame with 'cycle_phase_regressor' column added.
@@ -503,12 +506,27 @@ def create_cycle_phase_regressor(
     df[date_col] = pd.to_datetime(df[date_col])
     df["cycle_phase_regressor"] = 0.0
 
-    # Use data-driven parameters or sensible defaults
-    peak_day = averages.avg_days_to_top if averages.avg_days_to_top > 0 else 365
-    bottom_day = averages.avg_days_to_bottom if averages.avg_days_to_bottom > 0 else 730
-    pre_ramp_days = averages.run_up_days if averages.run_up_days > 0 else 180
+    # Default parameters from averages (fallback for future halvings)
+    default_peak_day = averages.avg_days_to_top if averages.avg_days_to_top > 0 else 365
+    default_bottom_day = averages.avg_days_to_bottom if averages.avg_days_to_bottom > 0 else 730
+    default_pre_ramp_days = averages.run_up_days if averages.run_up_days > 0 else 180
+    consolidation_days = 120  # Post-halving consolidation period
 
     cycle_length = 1461  # ~4 years
+
+    # Build lookup from cycle_metrics if available
+    cycle_data = {}
+    if cycle_metrics is not None and not cycle_metrics.empty:
+        for _, row in cycle_metrics.iterrows():
+            h_date = pd.Timestamp(row["halving_date"])
+            cycle_data[h_date] = {
+                "peak_day": int(row.get("days_after_halving_to_high", default_peak_day)),
+                "bottom_day": int(row.get("days_after_halving_to_low", default_bottom_day)),
+                "pre_ramp_days": int(row.get("run_up_days", default_pre_ramp_days)),
+            }
+
+    # Find the last halving with actual historical data
+    data_end = df[date_col].max()
 
     for i, h in enumerate(halving_dates):
         if i == 0:
@@ -517,50 +535,74 @@ def create_cycle_phase_regressor(
         prev_h = halving_dates[i - 1]
         next_h = halving_dates[i + 1] if i + 1 < len(halving_dates) else h + pd.Timedelta(days=cycle_length)
 
-        post_days = (next_h - h).days
+        # Get per-halving data if available, otherwise use defaults
+        if h in cycle_data:
+            peak_day = cycle_data[h]["peak_day"]
+            bottom_day = cycle_data[h]["bottom_day"]
+            pre_ramp_days = cycle_data[h]["pre_ramp_days"]
+        else:
+            # Future halving - use averages
+            peak_day = default_peak_day
+            bottom_day = default_bottom_day
+            pre_ramp_days = default_pre_ramp_days
 
-        # Pre-halving ramp (last pre_ramp_days before halving)
+        # Dampen effect for future halvings (beyond historical data)
+        is_future_halving = h > data_end
+        dampen = 0.5 if is_future_halving else 1.0
+
+        # ============================================================
+        # PRE-HALVING RUN-UP: Bullish, ramps UP toward halving
+        # ============================================================
         ramp_start = h - pd.Timedelta(days=pre_ramp_days)
         pre_mask = (df[date_col] >= ramp_start) & (df[date_col] < h)
         if pre_mask.any():
             days_to_halving = (h - df.loc[pre_mask, date_col]).dt.days.values
-            # Smooth ramp from -0.3 to 0
-            df.loc[pre_mask, "cycle_phase_regressor"] = -0.3 * (days_to_halving / pre_ramp_days)
+            # Ramp from 0 at ramp_start to +0.5 at halving (BULLISH)
+            progress = 1 - (days_to_halving / max(pre_ramp_days, 1))  # 0 at start, 1 at halving
+            df.loc[pre_mask, "cycle_phase_regressor"] = 0.5 * progress * dampen
 
-        # Post-halving: vectorized using np.where for different phases
+        # ============================================================
+        # POST-HALVING PHASES
+        # ============================================================
         post_mask = (df[date_col] >= h) & (df[date_col] < next_h)
         if post_mask.any():
             days_since = (df.loc[post_mask, date_col] - h).dt.days.values
 
-            # Phase 1: Bull run (0 to peak_day) - ramps up smoothly
-            # Phase 2: Distribution (peak_day to bottom_day) - declines
-            # Phase 3: Bear/accumulation (bottom_day to next halving) - stays low
+            regressor_values = np.zeros_like(days_since, dtype=float)
 
-            # Use smooth Gaussian-weighted transitions instead of linear
-            # Bull phase: Gaussian rising to peak at peak_day
-            bull_weight = np.exp(-((days_since - peak_day) ** 2) / (2 * (peak_day / 2) ** 2))
+            # Phase 1: Consolidation (0 to consolidation_days)
+            # Drops from +0.5 (halving) to 0 (neutral)
+            consol_mask = days_since <= consolidation_days
+            if consol_mask.any():
+                progress = days_since[consol_mask] / consolidation_days
+                regressor_values[consol_mask] = 0.5 * (1 - progress)  # 0.5 → 0
 
-            # Bear phase: starts after peak, deepest at bottom_day
-            bear_weight = np.where(
-                days_since > peak_day,
-                np.exp(-((days_since - bottom_day) ** 2) / (2 * 200 ** 2)),
-                0
-            )
+            # Phase 2: Bull run (consolidation_days to peak_day)
+            # Moderately bullish, but less than pre-halving (already priced in)
+            bull_mask = (days_since > consolidation_days) & (days_since <= peak_day)
+            if bull_mask.any():
+                denom = max(peak_day - consolidation_days, 1)
+                progress = (days_since[bull_mask] - consolidation_days) / denom
+                regressor_values[bull_mask] = 0.3 * progress
 
-            # Combine: positive during bull, negative during bear
-            # Scale bull phase to max 0.8, bear phase to min -0.3
-            regressor_values = 0.8 * bull_weight - 0.3 * bear_weight
+            # Phase 3: Distribution/Drawdown (peak_day to bottom_day)
+            # Bearish, ramps down
+            dist_mask = (days_since > peak_day) & (days_since <= bottom_day)
+            if dist_mask.any():
+                denom = max(bottom_day - peak_day, 1)
+                progress = (days_since[dist_mask] - peak_day) / denom
+                regressor_values[dist_mask] = 0.3 - 0.6 * progress  # 0.3 → -0.3
 
-            # Clamp to reasonable range to avoid Prophet issues
-            regressor_values = np.clip(regressor_values, -0.5, 1.0)
+            # Phase 4: Late bear / early accumulation (after bottom_day)
+            # Stay moderately bearish
+            late_mask = days_since > bottom_day
+            if late_mask.any():
+                regressor_values[late_mask] = -0.2
+
+            # Apply dampening for future halvings
+            regressor_values *= dampen
 
             df.loc[post_mask, "cycle_phase_regressor"] = regressor_values
-
-        # Accumulation phase (between drawdown and pre-ramp)
-        acc_mask = (df[date_col] >= prev_h) & (df[date_col] < ramp_start)
-        if acc_mask.any():
-            # Stay at moderate negative during accumulation
-            df.loc[acc_mask, "cycle_phase_regressor"] = -0.2
 
     return df
 

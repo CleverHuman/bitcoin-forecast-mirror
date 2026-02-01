@@ -155,6 +155,7 @@ def train_prophet_with_regressors(
     use_cycle_regressors: bool = True,
     halving_averages: HalvingAverages | None = None,
     decay_params: tuple[float, float, float] | None = None,
+    cycle_metrics: pd.DataFrame | None = None,
 ) -> tuple[Prophet, pd.DataFrame]:
     """Train Prophet with cycle-aware regressors.
 
@@ -173,6 +174,7 @@ def train_prophet_with_regressors(
         use_cycle_regressors: Whether to add cycle position regressors.
         halving_averages: HalvingAverages with double-top timing data.
         decay_params: Tuple of (a, b, c) from fit_decay_curve for drawdown decay.
+        cycle_metrics: DataFrame from compute_cycle_metrics() for per-halving data.
 
     Returns:
         Tuple of (trained model, forecast DataFrame).
@@ -209,7 +211,7 @@ def train_prophet_with_regressors(
         df = create_double_top_regressor(df, halving_averages)
 
     if enable_cycle_phase:
-        df = create_cycle_phase_regressor(df, halving_averages)
+        df = create_cycle_phase_regressor(df, halving_averages, cycle_metrics=cycle_metrics)
 
     if enable_decay:
         df = create_decay_regressor(df, decay_params, HALVING_DATES, halving_averages=halving_averages)
@@ -261,7 +263,7 @@ def train_prophet_with_regressors(
         future = create_double_top_regressor(future, halving_averages)
 
     if enable_cycle_phase:
-        future = create_cycle_phase_regressor(future, halving_averages)
+        future = create_cycle_phase_regressor(future, halving_averages, cycle_metrics=cycle_metrics)
 
     if enable_decay:
         future = create_decay_regressor(future, decay_params, HALVING_DATES, halving_averages=halving_averages)
@@ -316,6 +318,7 @@ def train_simple_ensemble(
         use_cycle_regressors=True,
         halving_averages=halving_averages,
         decay_params=decay_params,
+        cycle_metrics=cycle_metrics,
     )
 
     # Add cycle features to forecast
