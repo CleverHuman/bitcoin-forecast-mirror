@@ -1,19 +1,51 @@
+from .decay import (
+    DecayPrediction,
+    create_decay_adjustment,
+    create_decay_regressor,
+    exp_decay,
+    fit_decay_curve,
+    predict_drawdown,
+    predict_volatility,
+    print_decay_prediction,
+)
 from .halving import (
     HALVING_DATES,
+    DoubleTopInfo,
     HalvingAverages,
+    backtest_predictions,
     compute_cycle_metrics,
     compute_halving_averages,
+    create_cycle_phase_regressor,
+    create_double_top_regressor,
+    detect_double_top,
     get_prophet_params_from_halving,
+    predict_cycle_dates,
     print_halving_summary,
     sanity_check_forecast,
 )
 
 __all__ = [
+    # decay
+    "DecayPrediction",
+    "create_decay_adjustment",
+    "create_decay_regressor",
+    "exp_decay",
+    "fit_decay_curve",
+    "predict_drawdown",
+    "predict_volatility",
+    "print_decay_prediction",
+    # halving
     "HALVING_DATES",
+    "DoubleTopInfo",
     "HalvingAverages",
+    "backtest_predictions",
     "compute_cycle_metrics",
     "compute_halving_averages",
+    "create_cycle_phase_regressor",
+    "create_double_top_regressor",
+    "detect_double_top",
     "get_prophet_params_from_halving",
+    "predict_cycle_dates",
     "print_halving_summary",
     "sanity_check_forecast",
 ]

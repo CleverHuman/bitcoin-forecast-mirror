@@ -2,6 +2,7 @@
 databricks-sql-connector[pyarrow]>=3.0.0
 python-dotenv>=1.0.0
 pandas>=2.0.0
+scipy>=1.10.0
 prophet>=1.1.0
 matplotlib>=3.7.0
 plotly>=5.0.0  # optional; Prophet uses it for interactive plots (suppresses "Importing plotly failed")

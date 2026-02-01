@@ -10,8 +10,6 @@ For each halving cycle, this module measures:
 - **Drawdown**: Price decrease from post-halving high to cycle low
 - **Duration**: Days for each phase
 
-A **buffer** (default 90 days) restricts overlaps with halving boundaries: the pre-halving high must be at least that many days before the halving, and the post-halving high must be at least that many days after the halving and before the next halving. This avoids counting the run-up to the next halving as the “post-halving high” of the current cycle.
-
 These metrics are averaged across cycles to:
 - Parameterize Prophet model settings
 - Sanity-check forecast outputs against historical norms
@@ -136,7 +134,6 @@ Compute run-up/drawdown metrics for each halving cycle.
 - `date_col`: Name of date column (default: "ds")
 - `price_col`: Name of price column (default: "y")
 - `halving_dates`: Custom halving dates (default: `HALVING_DATES`)
-- `buffer_days`: Minimum days between key prices and halving boundaries (default: 90)
 
 **Returns:** DataFrame with one row per cycle
 

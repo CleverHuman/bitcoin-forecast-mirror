@@ -42,3 +42,8 @@ Thumbs.db
 # Output files
 *.csv
 *.parquet
+
+# Reports (keep directory structure, ignore generated files)
+reports/*.csv
+reports/*.txt
+!reports/.gitkeep
