@@ -246,6 +246,102 @@ def _empty_metrics(initial_capital: float) -> BacktestMetrics:
     )
 
 
+def build_trade_log(trades: list[Trade]) -> list[dict[str, Any]]:
+    """Build a trade log with profit per round-trip (FIFO pair BUY with SELL).
+
+    Returns:
+        List of dicts: date, action, price, btc, amount_usd, fee;
+        for SELL also: cost_basis, profit_usd, profit_pct, cumulative_profit.
+    """
+    rows = []
+    buy_queue: list[tuple[float, float]] = []  # (btc, cost_usd)
+    cumulative_profit = 0.0
+
+    for t in trades:
+        row: dict[str, Any] = {
+            "date": t.date,
+            "action": t.action,
+            "price": t.price,
+            "btc": t.btc,
+            "amount_usd": t.amount_usd,
+            "fee": t.fee,
+            "signal": t.signal,
+        }
+        if t.action == "BUY":
+            cost_usd = t.amount_usd
+            buy_queue.append((t.btc, cost_usd))
+            row["profit_usd"] = None
+            row["profit_pct"] = None
+            row["cumulative_profit"] = None
+        elif t.action == "SELL" and buy_queue:
+            sell_btc = t.btc
+            sell_usd = t.amount_usd - t.fee
+            cost_basis = 0.0
+            btc_remaining = sell_btc
+            while btc_remaining > 1e-9 and buy_queue:
+                buy_btc, buy_cost = buy_queue[0]
+                if buy_btc <= btc_remaining:
+                    buy_queue.pop(0)
+                    cost_basis += buy_cost
+                    btc_remaining -= buy_btc
+                else:
+                    ratio = btc_remaining / buy_btc
+                    cost_basis += buy_cost * ratio
+                    buy_queue[0] = (buy_btc - btc_remaining, buy_cost * (1 - ratio))
+                    btc_remaining = 0
+            profit_usd = sell_usd - cost_basis
+            profit_pct = (profit_usd / cost_basis * 100) if cost_basis > 0 else 0.0
+            cumulative_profit += profit_usd
+            row["cost_basis"] = cost_basis
+            row["profit_usd"] = profit_usd
+            row["profit_pct"] = profit_pct
+            row["cumulative_profit"] = cumulative_profit
+        else:
+            row["profit_usd"] = None
+            row["profit_pct"] = None
+            row["cumulative_profit"] = None
+        rows.append(row)
+
+    return rows
+
+
+def print_trade_log(metrics: BacktestMetrics, strategy_name: str = "") -> None:
+    """Print when each buy/sell happened and profit per trade (and cumulative)."""
+    if not metrics.trades:
+        print("\nNo trades to show.")
+        return
+
+    header = f"TRADE LOG: {strategy_name}" if strategy_name else "TRADE LOG"
+    print("\n" + "=" * 90)
+    print(header)
+    print("=" * 90)
+
+    log = build_trade_log(metrics.trades)
+    print(f"\n  {'Date':<12}  {'Action':<6}  {'Price':>12}  {'BTC':>10}  {'USD':>12}  {'Fee':>8}  {'Profit $':>10}  {'Profit %':>8}  {'Cumul. $':>10}")
+    print("  " + "-" * 88)
+
+    for r in log:
+        date_str = r["date"].strftime("%Y-%m-%d") if hasattr(r["date"], "strftime") else str(r["date"])
+        price_str = f"{r['price']:,.2f}"
+        btc_str = f"{r['btc']:.6f}"
+        usd_str = f"{r['amount_usd']:,.0f}"
+        fee_str = f"{r['fee']:,.2f}"
+        if r["action"] == "SELL" and r.get("profit_usd") is not None:
+            p_usd = f"{r['profit_usd']:+,.2f}"
+            p_pct = f"{r['profit_pct']:+.1f}%"
+            cum = f"{r['cumulative_profit']:+,.2f}"
+        else:
+            p_usd = "-"
+            p_pct = "-"
+            cum = "-"
+        print(f"  {date_str:<12}  {r['action']:<6}  {price_str:>12}  {btc_str:>10}  {usd_str:>12}  {fee_str:>8}  {p_usd:>10}  {p_pct:>8}  {cum:>10}")
+
+    total_profit = metrics.final_value - metrics.initial_capital
+    print("  " + "-" * 88)
+    print(f"  Total profit: ${total_profit:+,.2f}  |  Return: {metrics.total_return_pct:+.1f}%  |  Initial: ${metrics.initial_capital:,.0f}  →  Final: ${metrics.final_value:,.0f}")
+    print("=" * 90 + "\n")
+
+
 def print_metrics_report(metrics: BacktestMetrics, strategy_name: str = "") -> None:
     """Print a formatted metrics report."""
     header = f"BACKTEST REPORT: {strategy_name}" if strategy_name else "BACKTEST REPORT"

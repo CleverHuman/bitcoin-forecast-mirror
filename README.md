@@ -39,8 +39,11 @@ python forecast_cycle.py
 # Full signals - cycle-aware forecast + buy/sell recommendations
 python forecast_signals.py
 
-# Compare trading strategies
-python backtest_strategies.py
+# Compare trading strategies (decide which to use)
+python backtest_strategies.py --capital 50000
+
+# Paper trade with live prices
+python live_trader.py --capital 50000
 ```
 
 ### Forecasting
@@ -92,6 +95,22 @@ comparison = compare_strategies(df, [
 
 print_comparison(comparison)
 ```
+
+### Backtest then paper trade
+
+1. **Run backtests** to compare strategies and pick one:
+   ```bash
+   python backtest_strategies.py --capital 50000
+   # Optional: --start 2020-01-01 --end 2025-01-01
+   # Summary is saved to reports/backtest_summary.csv
+   ```
+   Strategies: Combined (cycle + forecast + technicals), Halving Cycle, Forecast-Based, Forecast Momentum, Buy & Hold.
+
+2. **Run paper trading** with live prices (no real orders):
+   ```bash
+   python live_trader.py --capital 50000
+   ```
+   The live bot uses forecast + tactical logic (closest backtest analogue: **Combined**). It refreshes the forecast every 24h and logs live price and B&H comparison.
 
 ### Generate Buy/Sell Signals (Legacy API)
 

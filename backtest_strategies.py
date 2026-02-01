@@ -16,6 +16,7 @@ import argparse
 from datetime import datetime
 from pathlib import Path
 
+import pandas as pd
 from dotenv import load_dotenv
 
 # Load environment variables before imports
@@ -29,6 +30,8 @@ from src.backtesting import (
     compare_strategies,
     print_comparison,
     print_metrics_report,
+    print_trade_log,
+    build_trade_log,
 )
 from src.backtesting.strategies import (
     CombinedStrategy,
@@ -163,12 +166,25 @@ Then run paper trading:
         comparison.summary.to_csv(out_path, index=False)
         print(f"\nSummary saved to {out_path}")
 
-    # Detailed report for best by return
+    # Detailed report and trade log for best by return
     best_name = comparison.summary.iloc[0]["Strategy"]
+    best_result = comparison.results[best_name]
     print("\n" + "=" * 70)
     print(f"DETAILED: {best_name}")
     print("=" * 70)
-    print_metrics_report(comparison.results[best_name], best_name)
+    print_metrics_report(best_result, best_name)
+
+    # When each buy/sell happened and profit per trade
+    print_trade_log(best_result, best_name)
+
+    # Save trade log to CSV
+    if not args.no_save and best_result.trades:
+        log = build_trade_log(best_result.trades)
+        trades_df = pd.DataFrame(log)
+        trades_df["date"] = pd.to_datetime(trades_df["date"]).dt.strftime("%Y-%m-%d")
+        trades_path = reports_dir / "backtest_trades.csv"
+        trades_df.to_csv(trades_path, index=False)
+        print(f"Trade log saved to {trades_path}")
 
     print("\n" + "=" * 70)
     print("NEXT: Paper trade with live prices")

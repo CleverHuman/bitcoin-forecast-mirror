@@ -21,7 +21,7 @@ Usage:
 """
 
 from .runner import BacktestRunner, BacktestConfig
-from .metrics import BacktestMetrics, Trade, print_metrics_report
+from .metrics import BacktestMetrics, Trade, print_metrics_report, print_trade_log, build_trade_log
 from .comparison import compare_strategies, print_comparison, StrategyComparison
 
 __all__ = [
@@ -30,6 +30,8 @@ __all__ = [
     "BacktestMetrics",
     "Trade",
     "print_metrics_report",
+    "print_trade_log",
+    "build_trade_log",
     "compare_strategies",
     "print_comparison",
     "StrategyComparison",
