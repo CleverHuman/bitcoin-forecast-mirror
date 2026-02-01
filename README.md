@@ -192,3 +192,44 @@ bh_bitcoin_forecast/
 ├── forecast_signals.py       # Full signals + recommendations
 └── requirements.txt
 ```
+
+## Planned Improvements
+
+### Block-Based Halving Date Prediction
+
+Add functionality to predict halving dates based on Bitcoin block height instead of fixed calendar dates.
+
+**Background:**
+- Bitcoin halvings occur every **210,000 blocks**
+- Halving 1: Block 210,000 (Nov 2012)
+- Halving 2: Block 420,000 (Jul 2016)
+- Halving 3: Block 630,000 (May 2020)
+- Halving 4: Block 840,000 (Apr 2024)
+- Halving 5: Block 1,050,000 (~2028)
+
+**Planned features:**
+- [ ] Fetch current block height from blockchain API
+- [ ] Calculate blocks remaining until next halving
+- [ ] Estimate halving date using average block time (~10 min target, actual varies)
+- [ ] Use rolling average block time for more accurate predictions
+- [ ] Update `HALVING_DATES` dynamically based on block progress
+- [ ] Provide confidence intervals based on block time variance
+
+**Example API:**
+```python
+from src.metrics import predict_halving_date
+
+# Get predicted date for next halving
+prediction = predict_halving_date(
+    current_block=830000,
+    current_date="2024-01-15",
+    use_rolling_avg=True,  # Use recent block times vs 10-min target
+)
+
+print(f"Next halving: Block {prediction.halving_block}")
+print(f"Blocks remaining: {prediction.blocks_remaining}")
+print(f"Predicted date: {prediction.predicted_date}")
+print(f"Confidence interval: {prediction.date_low} to {prediction.date_high}")
+```
+
+This will improve forecast accuracy by using real-time block data instead of estimated calendar dates.
