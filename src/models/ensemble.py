@@ -4,6 +4,7 @@ Prophet captures trend and seasonality, while a gradient boosting model
 learns cycle-specific patterns that Prophet misses.
 """
 
+import os
 from typing import Any
 
 import numpy as np
@@ -21,6 +22,19 @@ from src.metrics import (
 )
 
 
+def _env_bool(key: str, default: bool = True) -> bool:
+    """Read a boolean from environment variable."""
+    val = os.getenv(key, str(default)).lower()
+    return val in ("true", "1", "yes", "on")
+
+
+# Regressor toggles from environment
+USE_CYCLE_REGRESSORS = _env_bool("REGRESSOR_CYCLE", True)
+USE_DOUBLE_TOP = _env_bool("REGRESSOR_DOUBLE_TOP", True)
+USE_CYCLE_PHASE = _env_bool("REGRESSOR_CYCLE_PHASE", True)
+USE_DECAY = _env_bool("REGRESSOR_DECAY", True)
+
+
 def train_prophet_with_regressors(
     df: pd.DataFrame,
     periods: int = 240,
@@ -32,6 +46,12 @@ def train_prophet_with_regressors(
 
     Unlike standard Prophet holidays (point effects), regressors allow
     continuous influence based on cycle position.
+
+    Regressors can be disabled via environment variables:
+    - REGRESSOR_CYCLE: sin/cos cycle position, pre/post halving weights
+    - REGRESSOR_DOUBLE_TOP: double-top pattern detection
+    - REGRESSOR_CYCLE_PHASE: continuous cycle phase encoding
+    - REGRESSOR_DECAY: drawdown decay curve adjustment
 
     Args:
         df: DataFrame with 'ds' and 'y' columns.
@@ -45,18 +65,33 @@ def train_prophet_with_regressors(
     """
     df = df.copy()
 
-    if use_cycle_regressors:
+    # Check env toggles combined with data availability
+    enable_cycle = use_cycle_regressors and USE_CYCLE_REGRESSORS
+    enable_double_top = (
+        USE_DOUBLE_TOP
+        and halving_averages is not None
+        and halving_averages.double_top_frequency > 0
+    )
+    enable_cycle_phase = (
+        USE_CYCLE_PHASE
+        and halving_averages is not None
+    )
+    enable_decay = USE_DECAY and decay_params is not None
+
+    # Log which regressors are active
+    print(f"  Regressors: cycle={enable_cycle}, double_top={enable_double_top}, "
+          f"cycle_phase={enable_cycle_phase}, decay={enable_decay}")
+
+    if enable_cycle:
         df = create_cycle_regressors_for_prophet(df)
 
-    # Add double-top regressor if we have averages with double-top data
-    use_double_top = halving_averages is not None and halving_averages.double_top_frequency > 0
-    if use_double_top:
+    if enable_double_top:
         df = create_double_top_regressor(df, halving_averages)
+
+    if enable_cycle_phase:
         df = create_cycle_phase_regressor(df, halving_averages)
 
-    # Add decay regressor if we have decay parameters
-    use_decay = decay_params is not None
-    if use_decay:
+    if enable_decay:
         df = create_decay_regressor(df, decay_params, HALVING_DATES)
 
     model = Prophet(
