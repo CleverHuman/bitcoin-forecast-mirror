@@ -15,7 +15,13 @@ import pandas as pd
 from dotenv import load_dotenv
 
 from src.db import DatabricksConnector
-from src.metrics import HALVING_DATES, compute_cycle_metrics, compute_halving_averages, print_halving_summary
+from src.metrics import (
+    HALVING_DATES,
+    backtest_predictions,
+    compute_cycle_metrics,
+    compute_halving_averages,
+    print_halving_summary,
+)
 from src.models import (
     train_simple_ensemble,
     generate_signals,
@@ -71,8 +77,6 @@ def plot_signals(
         forecast: Forecasted prices.
         cycle_metrics: Optional cycle metrics for plotting tops/bottoms.
     """
-    from src.metrics.halving import backtest_predictions
-
     fig, axes = plt.subplots(3, 1, figsize=(16, 12), sharex=True)
 
     # Sort data by date
@@ -99,6 +103,65 @@ def plot_signals(
         if df["ds"].min() <= h <= forecast["ds"].max():
             ax1.axvline(x=h, color="red", linestyle="--", alpha=0.7, linewidth=2)
             ax1.text(h, ax1.get_ylim()[1] * 0.9, f"Halving {i+1}", rotation=90, va="top", fontsize=8)
+
+    # Plot actual and predicted tops/bottoms from cycle_metrics
+    if cycle_metrics is not None and not cycle_metrics.empty:
+        # Actual tops (filled red triangle pointing down)
+        actual_tops = cycle_metrics[["post_high_date", "post_high_price"]].dropna()
+        ax1.scatter(
+            actual_tops["post_high_date"],
+            actual_tops["post_high_price"],
+            marker="v",
+            s=120,
+            c="red",
+            edgecolors="darkred",
+            linewidths=1.5,
+            zorder=10,
+            label="Actual Top",
+        )
+
+        # Actual bottoms (filled green triangle pointing up)
+        actual_bottoms = cycle_metrics[["post_low_date", "post_low_price"]].dropna()
+        ax1.scatter(
+            actual_bottoms["post_low_date"],
+            actual_bottoms["post_low_price"],
+            marker="^",
+            s=120,
+            c="limegreen",
+            edgecolors="darkgreen",
+            linewidths=1.5,
+            zorder=10,
+            label="Actual Bottom",
+        )
+
+        # Get predicted tops/bottoms from backtesting (using prior cycles)
+        backtest = backtest_predictions(cycle_metrics)
+        if not backtest.empty:
+            # Predicted tops (hollow red diamond)
+            ax1.scatter(
+                backtest["predicted_top"],
+                backtest["actual_top_price"],  # Use actual price at predicted date for y-axis
+                marker="D",
+                s=80,
+                facecolors="none",
+                edgecolors="red",
+                linewidths=2,
+                zorder=9,
+                label="Predicted Top",
+            )
+
+            # Predicted bottoms (hollow green diamond)
+            ax1.scatter(
+                backtest["predicted_bottom"],
+                backtest["actual_bottom_price"],  # Use actual price at predicted date for y-axis
+                marker="D",
+                s=80,
+                facecolors="none",
+                edgecolors="limegreen",
+                linewidths=2,
+                zorder=9,
+                label="Predicted Bottom",
+            )
 
     last_historical = df["ds"].max()
     ax1.axvline(x=last_historical, color="gray", linestyle=":", linewidth=1.5, alpha=0.8)
@@ -189,6 +252,63 @@ def plot_signals(
         if df["ds"].min() <= h <= forecast["ds"].max():
             ax.axvline(x=h, color="red", linestyle="--", alpha=0.7, linewidth=2)
             ax.text(h, ax.get_ylim()[1] * 0.9, f"Halving {i+1}", rotation=90, va="top", fontsize=8)
+
+    # Plot actual and predicted tops/bottoms on linear scale too
+    if cycle_metrics is not None and not cycle_metrics.empty:
+        # Actual tops
+        actual_tops = cycle_metrics[["post_high_date", "post_high_price"]].dropna()
+        ax.scatter(
+            actual_tops["post_high_date"],
+            actual_tops["post_high_price"],
+            marker="v",
+            s=120,
+            c="red",
+            edgecolors="darkred",
+            linewidths=1.5,
+            zorder=10,
+            label="Actual Top",
+        )
+
+        # Actual bottoms
+        actual_bottoms = cycle_metrics[["post_low_date", "post_low_price"]].dropna()
+        ax.scatter(
+            actual_bottoms["post_low_date"],
+            actual_bottoms["post_low_price"],
+            marker="^",
+            s=120,
+            c="limegreen",
+            edgecolors="darkgreen",
+            linewidths=1.5,
+            zorder=10,
+            label="Actual Bottom",
+        )
+
+        # Predicted tops/bottoms
+        backtest = backtest_predictions(cycle_metrics)
+        if not backtest.empty:
+            ax.scatter(
+                backtest["predicted_top"],
+                backtest["actual_top_price"],
+                marker="D",
+                s=80,
+                facecolors="none",
+                edgecolors="red",
+                linewidths=2,
+                zorder=9,
+                label="Predicted Top",
+            )
+            ax.scatter(
+                backtest["predicted_bottom"],
+                backtest["actual_bottom_price"],
+                marker="D",
+                s=80,
+                facecolors="none",
+                edgecolors="limegreen",
+                linewidths=2,
+                zorder=9,
+                label="Predicted Bottom",
+            )
+
     ax.axvline(x=last_historical, color="gray", linestyle=":", linewidth=1.5, alpha=0.8)
     ax.set_ylabel("Price (USD)")
     ax.set_xlabel("Date")
@@ -347,7 +467,7 @@ def main():
 
         # Plot
         print("\nPlotting...")
-        plot_signals(df_signals, forecast)
+        plot_signals(df_signals, forecast, cycle_metrics=cycle_metrics)
 
         print("\nDone!")
 
