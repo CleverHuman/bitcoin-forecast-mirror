@@ -46,7 +46,16 @@ class BacktestRunner:
             df: Historical data with 'ds' and 'y' columns.
             config: Backtest configuration. Uses defaults if None.
         """
-        self.df = df.copy().sort_values("ds").reset_index(drop=True)
+        df = df.copy()
+        df["ds"] = pd.to_datetime(df["ds"])
+        df = df.sort_values("ds")
+        # One row per calendar day: keep row with max(y) per day so we never
+        # pick a wrong price (e.g. 0.62 when real BTC is ~100k) which would
+        # create impossible position sizes and runaway compounding.
+        date_only = df["ds"].dt.normalize()
+        idx_max_y = df.groupby(date_only)["y"].idxmax()
+        df = df.loc[idx_max_y].sort_values("ds").reset_index(drop=True)
+        self.df = df
         self.config = config or BacktestConfig()
 
     def run(
@@ -119,7 +128,7 @@ class BacktestRunner:
             if btc_held > 0 and entry_price > 0:
                 sold = self._check_risk_exit(
                     date, price, signal, btc_held, entry_price,
-                    highest_since_entry, trades
+                    highest_since_entry, capital, trades
                 )
                 if sold:
                     sell_proceeds = sold["proceeds"]
@@ -129,9 +138,10 @@ class BacktestRunner:
                     highest_since_entry = 0.0
                     continue
 
-            # Signal-based trading
+            # Signal-based trading: only enter on BUY when flat, only exit on SELL (full exit)
+            # to avoid runaway compounding from repeated 25% adds vs 25% trims.
             if signal in [Signal.STRONG_BUY.value, Signal.BUY.value]:
-                if prev_signal not in [Signal.STRONG_BUY.value, Signal.BUY.value]:
+                if prev_signal not in [Signal.STRONG_BUY.value, Signal.BUY.value] and btc_held <= 0:
                     bought = self._try_buy(
                         date, price, signal, capital, btc_held,
                         portfolio_value, entry_price, trades
@@ -145,7 +155,7 @@ class BacktestRunner:
 
             elif signal in [Signal.STRONG_SELL.value, Signal.SELL.value]:
                 if prev_signal not in [Signal.STRONG_SELL.value, Signal.SELL.value]:
-                    sold = self._try_sell(date, price, signal, btc_held, trades)
+                    sold = self._try_sell(date, price, signal, btc_held, capital, trades)
                     if sold:
                         capital += sold["proceeds"]
                         btc_held -= sold["btc"]
@@ -170,6 +180,7 @@ class BacktestRunner:
         btc_held: float,
         entry_price: float,
         highest_since_entry: float,
+        capital: float,
         trades: list[Trade],
     ) -> dict | None:
         """Check stop loss, take profit, and trailing stop."""
@@ -179,13 +190,13 @@ class BacktestRunner:
         # Stop loss
         if cfg.stop_loss_pct and pnl_pct <= -cfg.stop_loss_pct:
             return self._execute_sell(
-                date, price, signal, btc_held, trades, "stop_loss"
+                date, price, signal, btc_held, capital, trades, "stop_loss"
             )
 
         # Take profit
         if cfg.take_profit_pct and pnl_pct >= cfg.take_profit_pct:
             return self._execute_sell(
-                date, price, signal, btc_held, trades, "take_profit"
+                date, price, signal, btc_held, capital, trades, "take_profit"
             )
 
         # Trailing stop
@@ -193,7 +204,7 @@ class BacktestRunner:
             trailing_stop_price = highest_since_entry * (1 - cfg.trailing_stop_pct)
             if price <= trailing_stop_price:
                 return self._execute_sell(
-                    date, price, signal, btc_held, trades, "trailing_stop"
+                    date, price, signal, btc_held, capital, trades, "trailing_stop"
                 )
 
         return None
@@ -204,6 +215,7 @@ class BacktestRunner:
         price: float,
         signal: str,
         btc: float,
+        capital: float,
         trades: list[Trade],
         reason: str,
     ) -> dict:
@@ -212,6 +224,8 @@ class BacktestRunner:
         gross = btc * price
         fee = gross * (cfg.fee_pct + cfg.slippage_pct) / 100
         net = gross - fee
+        balance_fiat = capital + net
+        balance_btc = 0.0
 
         trades.append(Trade(
             date=date,
@@ -222,6 +236,8 @@ class BacktestRunner:
             fee=fee,
             signal=signal,
             reason=reason,
+            balance_btc=balance_btc,
+            balance_fiat=balance_fiat,
         ))
 
         return {"proceeds": net, "btc": btc}
@@ -258,6 +274,8 @@ class BacktestRunner:
         fee = buy_amount * (cfg.fee_pct + cfg.slippage_pct) / 100
         net_amount = buy_amount - fee
         btc_bought = net_amount / price
+        balance_fiat = capital - buy_amount
+        balance_btc = btc_held + btc_bought
 
         trades.append(Trade(
             date=date,
@@ -268,6 +286,8 @@ class BacktestRunner:
             fee=fee,
             signal=signal,
             reason="signal",
+            balance_btc=balance_btc,
+            balance_fiat=balance_fiat,
         ))
 
         return {"cost": buy_amount, "btc": btc_bought}
@@ -278,17 +298,23 @@ class BacktestRunner:
         price: float,
         signal: str,
         btc_held: float,
+        capital: float,
         trades: list[Trade],
     ) -> dict | None:
-        """Try to execute a sell."""
+        """Try to execute a sell. Exits 100% of position on SELL signal to avoid
+        runaway compounding (buy 25% capital vs sell 25% position would grow
+        position without bound)."""
         if btc_held <= 0:
             return None
 
         cfg = self.config
-        sell_btc = btc_held * cfg.position_size
+        # Exit full position on sell signal so we don't accumulate BTC indefinitely
+        sell_btc = btc_held
         gross = sell_btc * price
         fee = gross * (cfg.fee_pct + cfg.slippage_pct) / 100
         net = gross - fee
+        balance_fiat = capital + net
+        balance_btc = 0.0
 
         trades.append(Trade(
             date=date,
@@ -299,6 +325,8 @@ class BacktestRunner:
             fee=fee,
             signal=signal,
             reason="signal",
+            balance_btc=balance_btc,
+            balance_fiat=balance_fiat,
         ))
 
         return {"proceeds": net, "btc": sell_btc}

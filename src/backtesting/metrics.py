@@ -22,6 +22,9 @@ class Trade:
     fee: float
     signal: str
     reason: str = ""
+    # Balances after this trade (for trade history table)
+    balance_btc: float | None = None
+    balance_fiat: float | None = None
 
 
 @dataclass
@@ -266,6 +269,8 @@ def build_trade_log(trades: list[Trade]) -> list[dict[str, Any]]:
             "amount_usd": t.amount_usd,
             "fee": t.fee,
             "signal": t.signal,
+            "balance_btc": t.balance_btc,
+            "balance_fiat": t.balance_fiat,
         }
         if t.action == "BUY":
             cost_usd = t.amount_usd
@@ -317,8 +322,8 @@ def print_trade_log(metrics: BacktestMetrics, strategy_name: str = "") -> None:
     print("=" * 90)
 
     log = build_trade_log(metrics.trades)
-    print(f"\n  {'Date':<12}  {'Action':<6}  {'Price':>12}  {'BTC':>10}  {'USD':>12}  {'Fee':>8}  {'Profit $':>10}  {'Profit %':>8}  {'Cumul. $':>10}")
-    print("  " + "-" * 88)
+    print(f"\n  {'Date':<12}  {'Action':<6}  {'Price':>12}  {'BTC':>10}  {'USD':>12}  {'Fee':>8}  {'Bal.BTC':>10}  {'Bal.Fiat':>12}  {'Profit $':>10}  {'Profit %':>8}  {'Cumul. $':>10}")
+    print("  " + "-" * 118)
 
     for r in log:
         date_str = r["date"].strftime("%Y-%m-%d") if hasattr(r["date"], "strftime") else str(r["date"])
@@ -326,6 +331,10 @@ def print_trade_log(metrics: BacktestMetrics, strategy_name: str = "") -> None:
         btc_str = f"{r['btc']:.6f}"
         usd_str = f"{r['amount_usd']:,.0f}"
         fee_str = f"{r['fee']:,.2f}"
+        bal_btc = r.get("balance_btc")
+        bal_fiat = r.get("balance_fiat")
+        bal_btc_str = f"{bal_btc:.6f}" if bal_btc is not None else "-"
+        bal_fiat_str = f"${bal_fiat:,.0f}" if bal_fiat is not None else "-"
         if r["action"] == "SELL" and r.get("profit_usd") is not None:
             p_usd = f"{r['profit_usd']:+,.2f}"
             p_pct = f"{r['profit_pct']:+.1f}%"
@@ -334,7 +343,7 @@ def print_trade_log(metrics: BacktestMetrics, strategy_name: str = "") -> None:
             p_usd = "-"
             p_pct = "-"
             cum = "-"
-        print(f"  {date_str:<12}  {r['action']:<6}  {price_str:>12}  {btc_str:>10}  {usd_str:>12}  {fee_str:>8}  {p_usd:>10}  {p_pct:>8}  {cum:>10}")
+        print(f"  {date_str:<12}  {r['action']:<6}  {price_str:>12}  {btc_str:>10}  {usd_str:>12}  {fee_str:>8}  {bal_btc_str:>10}  {bal_fiat_str:>12}  {p_usd:>10}  {p_pct:>8}  {cum:>10}")
 
     total_profit = metrics.final_value - metrics.initial_capital
     print("  " + "-" * 88)

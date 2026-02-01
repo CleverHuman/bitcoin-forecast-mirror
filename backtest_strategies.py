@@ -33,6 +33,7 @@ from src.backtesting import (
     print_trade_log,
     build_trade_log,
 )
+from src.viz import save_backtest_chart
 from src.backtesting.strategies import (
     CombinedStrategy,
     CycleSignalStrategy,
@@ -50,6 +51,7 @@ def main():
 Examples:
   python backtest_strategies.py
   python backtest_strategies.py --start 2020-01-01 --capital 50000
+  python backtest_strategies.py --plot          # also save chart to reports/backtest_chart.png
   python backtest_strategies.py --no-save
 
 Then run paper trading:
@@ -76,6 +78,11 @@ Then run paper trading:
         "--no-save",
         action="store_true",
         help="Do not save summary to reports/backtest_summary.csv",
+    )
+    parser.add_argument(
+        "--plot",
+        action="store_true",
+        help="Save backtest chart to reports/backtest_chart.png",
     )
     args = parser.parse_args()
 
@@ -185,6 +192,18 @@ Then run paper trading:
         trades_path = reports_dir / "backtest_trades.csv"
         trades_df.to_csv(trades_path, index=False)
         print(f"Trade log saved to {trades_path}")
+
+    # Save backtest chart (equity curves + price + buy/sell markers)
+    if args.plot:
+        reports_dir = Path("reports")
+        reports_dir.mkdir(exist_ok=True)
+        chart_path = save_backtest_chart(
+            comparison,
+            initial_capital=args.capital,
+            path=reports_dir / "backtest_chart.png",
+            best_name=best_name,
+        )
+        print(f"Chart saved to {chart_path}")
 
     print("\n" + "=" * 70)
     print("NEXT: Paper trade with live prices")
