@@ -27,6 +27,7 @@ from src.backtesting import (
     print_metrics_report,
 )
 from src.backtesting.strategies import (
+    CombinedStrategy,
     CycleSignalStrategy,
     ForecastBasedStrategy,
     ForecastMomentumStrategy,
@@ -77,6 +78,13 @@ def main():
     )
 
     strategies = [
+        CombinedStrategy(
+            halving_averages=averages,
+            cycle_metrics=cycle_metrics,
+            cycle_weight=0.30,
+            forecast_weight=0.40,
+            technical_weight=0.30,
+        ),
         CycleSignalStrategy(
             cycle_weight=0.6,
             technical_weight=0.4,
@@ -85,14 +93,9 @@ def main():
         ),
         ForecastMomentumStrategy(
             forecast_col="yhat_ensemble",
-            momentum_window=7,
-            divergence_threshold_pct=5.0,
-            min_trade_interval_days=7,  # ~4 trades per month max
-        ),
-        ForecastBasedStrategy(
-            forecast_col="yhat_ensemble",
-            threshold_pct=5.0,
             lookforward_days=30,
+            min_upside_pct=5.0,
+            min_trade_interval_days=7,  # ~4 trades per month max
         ),
         BuyAndHoldStrategy(),
     ]

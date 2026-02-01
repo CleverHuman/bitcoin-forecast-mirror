@@ -1,12 +1,12 @@
-"""Forecast momentum trading strategy.
+"""Forecast-based trading strategy.
 
-Trades multiple times per month based on:
-1. Forecast momentum (is the forecast trending up or down?)
-2. Price vs forecast divergence (is current price above/below forecast?)
-3. Forecast confidence (width of prediction interval)
+Trades based on the relationship between current price and forecasted price:
+- If predicted price > current price → potential upside → BUY
+- If predicted price < current price → potential downside → SELL
 
-This is an active trading strategy that generates signals more frequently
-than the cycle-based strategy.
+Also considers:
+- Forecast momentum (is forecast rising or falling?)
+- Price trend relative to forecast (converging or diverging?)
 """
 
 import numpy as np
@@ -16,41 +16,41 @@ from .base import BaseStrategy, Signal, StrategySignal, classify_signal
 
 
 class ForecastMomentumStrategy(BaseStrategy):
-    """Active trading strategy based on forecast momentum and divergence.
+    """Trade based on predicted price vs current price.
 
-    Generates signals by analyzing:
-    - Forecast slope (7-day momentum)
-    - Price vs forecast divergence
-    - Optional: confidence interval width
+    Core logic:
+    - Predicted upside (forecast > price) → BUY
+    - Predicted downside (forecast < price) → SELL
 
-    Trades more frequently than cycle strategy (~2-4 times per month).
+    Signal strength increases when:
+    - Large gap between price and forecast
+    - Forecast momentum confirms direction
+    - Price trending toward (not away from) forecast
+
+    Example:
+        Price: $80k, Forecast: $100k → 25% predicted upside → BUY
+        Price: $100k, Forecast: $80k → 20% predicted downside → SELL
     """
 
     def __init__(
         self,
         forecast_col: str = "yhat_ensemble",
-        momentum_window: int = 7,
-        divergence_threshold_pct: float = 5.0,
-        momentum_threshold_pct: float = 2.0,
+        lookforward_days: int = 30,
+        min_upside_pct: float = 5.0,
         min_trade_interval_days: int = 7,
-        use_confidence_bands: bool = True,
     ):
         """Initialize the strategy.
 
         Args:
             forecast_col: Column name for forecast ('yhat' or 'yhat_ensemble').
-            momentum_window: Days to compute forecast momentum (slope).
-            divergence_threshold_pct: Min % divergence between price and forecast to trade.
-            momentum_threshold_pct: Min % forecast change over momentum_window to signal.
-            min_trade_interval_days: Minimum days between trades (avoid overtrading).
-            use_confidence_bands: Use forecast confidence bands for signal strength.
+            lookforward_days: Days ahead to look at forecast.
+            min_upside_pct: Minimum predicted change % to trigger signal.
+            min_trade_interval_days: Minimum days between trades.
         """
         self.forecast_col = forecast_col
-        self.momentum_window = momentum_window
-        self.divergence_threshold_pct = divergence_threshold_pct
-        self.momentum_threshold_pct = momentum_threshold_pct
+        self.lookforward_days = lookforward_days
+        self.min_upside_pct = min_upside_pct
         self.min_trade_interval_days = min_trade_interval_days
-        self.use_confidence_bands = use_confidence_bands
 
     @property
     def name(self) -> str:
@@ -58,145 +58,167 @@ class ForecastMomentumStrategy(BaseStrategy):
 
     @property
     def description(self) -> str:
-        return f"Trade on {self.momentum_window}-day forecast momentum (min {self.min_trade_interval_days}d between trades)"
+        return f"Trade on {self.lookforward_days}-day predicted upside/downside (>{self.min_upside_pct}%)"
 
     def generate_signals(
         self,
         df: pd.DataFrame,
         forecast: pd.DataFrame | None = None,
     ) -> pd.DataFrame:
-        """Generate signals based on forecast momentum and divergence."""
+        """Generate signals based on predicted vs current price."""
         self.validate_data(df)
         df = df.copy()
 
         if forecast is None:
             raise ValueError("ForecastMomentumStrategy requires a forecast DataFrame")
 
-        # Merge forecast with price data
         df["ds"] = pd.to_datetime(df["ds"])
         forecast = forecast.copy()
         forecast["ds"] = pd.to_datetime(forecast["ds"])
 
         # Get forecast column
         if self.forecast_col not in forecast.columns:
-            if "yhat" in forecast.columns:
-                self.forecast_col = "yhat"
-            else:
-                raise ValueError(f"Forecast missing {self.forecast_col} column")
+            self.forecast_col = "yhat" if "yhat" in forecast.columns else None
+            if self.forecast_col is None:
+                raise ValueError("Forecast missing yhat column")
 
-        # Merge forecast into df
-        forecast_cols = ["ds", self.forecast_col]
-        if "yhat_lower" in forecast.columns and "yhat_upper" in forecast.columns:
-            forecast_cols.extend(["yhat_lower", "yhat_upper"])
+        # Build lookup for forecast values
+        forecast_lookup = forecast.set_index("ds")[self.forecast_col].to_dict()
 
-        df = df.merge(forecast[forecast_cols], on="ds", how="left")
+        # Also get current-day forecast for comparison
+        current_forecast_lookup = forecast.set_index("ds")[self.forecast_col].to_dict()
 
-        # Initialize scores
+        # Compute forecast momentum (is forecast trending up or down?)
+        forecast_sorted = forecast.sort_values("ds")
+        forecast_sorted["forecast_momentum"] = (
+            forecast_sorted[self.forecast_col].pct_change(periods=7) * 100
+        )
+        momentum_lookup = forecast_sorted.set_index("ds")["forecast_momentum"].to_dict()
+
+        # Initialize columns
+        df["predicted_price"] = np.nan
+        df["current_forecast"] = np.nan
+        df["predicted_change_pct"] = np.nan
+        df["forecast_momentum"] = np.nan
+        df["price_vs_forecast_pct"] = np.nan
         df["signal_score"] = 0.0
         df["signal_reason"] = ""
 
-        # =================================================================
-        # 1. FORECAST MOMENTUM (is forecast trending up or down?)
-        # =================================================================
-        df["forecast_momentum"] = (
-            df[self.forecast_col].pct_change(periods=self.momentum_window) * 100
-        )
+        for idx, row in df.iterrows():
+            current_date = row["ds"]
+            current_price = row["y"]
 
-        # Momentum score: positive momentum = bullish
-        momentum_score = (df["forecast_momentum"] / self.momentum_threshold_pct).clip(-1, 1)
-        df["momentum_score"] = momentum_score.fillna(0)
+            if pd.isna(current_price) or current_price <= 0:
+                continue
 
-        # =================================================================
-        # 2. PRICE VS FORECAST DIVERGENCE
-        # =================================================================
-        df["divergence_pct"] = ((df["y"] - df[self.forecast_col]) / df[self.forecast_col]) * 100
+            # Get forecast for N days ahead
+            target_date = current_date + pd.Timedelta(days=self.lookforward_days)
+            predicted_price = forecast_lookup.get(target_date)
 
-        # Divergence score:
-        # - Price below forecast = bullish (buy the dip)
-        # - Price above forecast = bearish (take profits)
-        divergence_score = (-df["divergence_pct"] / self.divergence_threshold_pct).clip(-1, 1)
-        df["divergence_score"] = divergence_score.fillna(0)
+            # Get current-day forecast (what model thinks price should be today)
+            current_forecast = current_forecast_lookup.get(current_date)
 
-        # =================================================================
-        # 3. CONFIDENCE BAND POSITION (optional)
-        # =================================================================
-        if self.use_confidence_bands and "yhat_lower" in df.columns:
-            # Where is price relative to forecast bands?
-            band_width = df["yhat_upper"] - df["yhat_lower"]
-            price_position = (df["y"] - df["yhat_lower"]) / band_width.replace(0, 1)
+            # Get forecast momentum
+            forecast_mom = momentum_lookup.get(current_date, 0)
 
-            # Position score:
-            # - Near lower band (0.0-0.3) = bullish
-            # - Near upper band (0.7-1.0) = bearish
-            # - Middle (0.3-0.7) = neutral
-            band_score = (0.5 - price_position).clip(-0.5, 0.5) * 2
-            df["band_score"] = band_score.fillna(0)
-        else:
-            df["band_score"] = 0
+            if predicted_price is None:
+                continue
 
-        # =================================================================
-        # COMBINE SCORES
-        # =================================================================
-        # Weight: momentum 40%, divergence 40%, bands 20%
-        if self.use_confidence_bands:
-            df["raw_score"] = (
-                df["momentum_score"] * 0.4 +
-                df["divergence_score"] * 0.4 +
-                df["band_score"] * 0.2
-            )
-        else:
-            df["raw_score"] = (
-                df["momentum_score"] * 0.5 +
-                df["divergence_score"] * 0.5
-            )
+            df.loc[idx, "predicted_price"] = predicted_price
+            df.loc[idx, "current_forecast"] = current_forecast
+            df.loc[idx, "forecast_momentum"] = forecast_mom
 
-        # =================================================================
-        # APPLY MINIMUM TRADE INTERVAL
-        # =================================================================
-        df["signal_score"] = self._apply_trade_interval(df, "raw_score")
+            # =================================================================
+            # 1. PREDICTED CHANGE: forecast vs current price
+            # =================================================================
+            # This is the main signal: how much upside/downside is predicted?
+            predicted_change_pct = (predicted_price / current_price - 1) * 100
+            df.loc[idx, "predicted_change_pct"] = predicted_change_pct
 
-        # Generate reasons
-        df["signal_reason"] = df.apply(self._get_reason, axis=1)
+            # =================================================================
+            # 2. PRICE VS CURRENT FORECAST: is price above or below where it "should" be?
+            # =================================================================
+            if current_forecast and current_forecast > 0:
+                price_vs_forecast = (current_price / current_forecast - 1) * 100
+                df.loc[idx, "price_vs_forecast_pct"] = price_vs_forecast
+            else:
+                price_vs_forecast = 0
+
+            # =================================================================
+            # COMPUTE SIGNAL SCORE
+            # =================================================================
+            score = 0.0
+            reasons = []
+
+            # Primary signal: predicted upside/downside
+            if abs(predicted_change_pct) >= self.min_upside_pct:
+                # Scale: 10% predicted change = 0.5 score, 20% = 1.0
+                base_score = np.clip(predicted_change_pct / 20, -1, 1)
+                score += base_score * 0.5
+
+                direction = "upside" if predicted_change_pct > 0 else "downside"
+                reasons.append(f"{abs(predicted_change_pct):.1f}% predicted {direction}")
+
+            # Boost: price below forecast + bullish momentum = strong buy
+            if price_vs_forecast < -self.min_upside_pct and forecast_mom > 0:
+                score += 0.3
+                reasons.append("price below rising forecast")
+
+            # Boost: price above forecast + bearish momentum = strong sell
+            elif price_vs_forecast > self.min_upside_pct and forecast_mom < 0:
+                score -= 0.3
+                reasons.append("price above falling forecast")
+
+            # Moderate boost: trending in right direction
+            if predicted_change_pct > 0 and forecast_mom > 2:
+                score += 0.2
+                reasons.append("bullish momentum")
+            elif predicted_change_pct < 0 and forecast_mom < -2:
+                score -= 0.2
+                reasons.append("bearish momentum")
+
+            df.loc[idx, "signal_score"] = np.clip(score, -1, 1)
+
+            if reasons:
+                action = "BUY" if score > 0.2 else ("SELL" if score < -0.2 else "HOLD")
+                df.loc[idx, "signal_reason"] = f"{action} - {', '.join(reasons)}"
+            else:
+                df.loc[idx, "signal_reason"] = "HOLD - No strong signal"
+
+        # Apply minimum trade interval
+        df["signal_score"] = self._apply_trade_interval(df)
 
         # Classify signals
         df["signal"] = df["signal_score"].apply(lambda s: classify_signal(s).value)
 
         return df
 
-    def _apply_trade_interval(self, df: pd.DataFrame, score_col: str) -> pd.Series:
-        """Apply minimum trade interval to avoid overtrading.
-
-        Only allow signal changes every min_trade_interval_days.
-        """
-        scores = df[score_col].copy()
+    def _apply_trade_interval(self, df: pd.DataFrame) -> pd.Series:
+        """Apply minimum trade interval to avoid overtrading."""
+        scores = df["signal_score"].copy()
         result = pd.Series(0.0, index=df.index)
 
-        last_signal_idx = None
-        last_signal_direction = 0  # 1 = buy, -1 = sell, 0 = neutral
+        last_trade_idx = None
+        last_direction = 0
 
         for i, (idx, row) in enumerate(df.iterrows()):
             raw_score = scores.loc[idx]
             current_direction = 1 if raw_score > 0.2 else (-1 if raw_score < -0.2 else 0)
 
-            # Check if enough days since last signal
-            if last_signal_idx is not None:
-                days_since = i - last_signal_idx
+            # Check days since last trade
+            if last_trade_idx is not None:
+                days_since = i - last_trade_idx
                 if days_since < self.min_trade_interval_days:
-                    # Too soon - hold previous position
                     result.loc[idx] = 0  # HOLD
                     continue
 
-            # Check if direction changed (or strong enough signal)
-            if current_direction != 0 and current_direction != last_signal_direction:
+            # Signal if direction changed or strong signal
+            if current_direction != 0 and (current_direction != last_direction or abs(raw_score) > 0.6):
                 result.loc[idx] = raw_score
-                last_signal_idx = i
-                last_signal_direction = current_direction
-            elif abs(raw_score) > 0.5:
-                # Strong signal in same direction - allow it
-                result.loc[idx] = raw_score
-                last_signal_idx = i
+                last_trade_idx = i
+                last_direction = current_direction
             else:
-                result.loc[idx] = 0  # HOLD
+                result.loc[idx] = 0
 
         return result
 
@@ -213,36 +235,10 @@ class ForecastMomentumStrategy(BaseStrategy):
             score=latest.get("signal_score", 0),
             reason=latest.get("signal_reason", ""),
             metadata={
+                "current_price": latest.get("y"),
+                "predicted_price": latest.get("predicted_price"),
+                "predicted_change_pct": latest.get("predicted_change_pct"),
+                "price_vs_forecast_pct": latest.get("price_vs_forecast_pct"),
                 "forecast_momentum": latest.get("forecast_momentum"),
-                "divergence_pct": latest.get("divergence_pct"),
-                "momentum_score": latest.get("momentum_score"),
-                "divergence_score": latest.get("divergence_score"),
             },
         )
-
-    def _get_reason(self, row: pd.Series) -> str:
-        """Generate human-readable signal reason."""
-        score = row.get("signal_score", 0)
-        momentum = row.get("forecast_momentum", 0)
-        divergence = row.get("divergence_pct", 0)
-
-        if abs(score) < 0.2:
-            return "HOLD - No strong signal"
-
-        parts = []
-
-        # Momentum component
-        if abs(momentum) > self.momentum_threshold_pct:
-            direction = "up" if momentum > 0 else "down"
-            parts.append(f"forecast trending {direction} ({momentum:+.1f}%)")
-
-        # Divergence component
-        if abs(divergence) > self.divergence_threshold_pct:
-            position = "below" if divergence < 0 else "above"
-            parts.append(f"price {position} forecast ({divergence:+.1f}%)")
-
-        if not parts:
-            parts.append("moderate signal strength")
-
-        action = "BUY" if score > 0 else "SELL"
-        return f"{action} - {', '.join(parts)}"

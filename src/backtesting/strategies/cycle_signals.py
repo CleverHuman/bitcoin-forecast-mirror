@@ -327,7 +327,8 @@ class CycleSignalStrategy(BaseStrategy):
     def _predict_prices(self) -> tuple[float | None, float | None]:
         """Predict bottom and top prices for next cycle using historical patterns.
 
-        Uses decay model for drawdown, run-up patterns for gains.
+        Uses decay model for drawdown. For run-up, uses only recent cycles
+        since early cycles had 10,000%+ gains which would skew predictions.
 
         Returns:
             Tuple of (predicted_bottom_price, predicted_top_price)
@@ -344,15 +345,19 @@ class CycleSignalStrategy(BaseStrategy):
 
             # Predict drawdown for next cycle
             prediction = predict_drawdown(self.cycle_metrics)
-            predicted_drawdown_pct = prediction.predicted_value  # As decimal (e.g., 0.5 for 50%)
+            predicted_drawdown_pct = prediction.predicted_value
 
             # Predicted bottom = last top * (1 - drawdown)
             predicted_bottom = last_top_price * (1 - predicted_drawdown_pct)
 
-            # Predicted top = predicted bottom * (1 + avg run-up)
-            avg_runup = self.cycle_metrics["run_up_pct"].mean() / 100  # As decimal
-            # Dampen run-up expectation (diminishing returns hypothesis)
-            dampened_runup = avg_runup * 0.7
+            # Use only last 2 cycles for run-up (early cycles too extreme)
+            recent_cycles = self.cycle_metrics.tail(2)
+            recent_runup = recent_cycles["run_up_pct"].mean() / 100
+
+            # Cap at 500% (5x) for realistic mature market expectation
+            capped_runup = min(recent_runup, 5.0)
+            dampened_runup = capped_runup * 0.5
+
             predicted_top = predicted_bottom * (1 + dampened_runup)
 
             return predicted_bottom, predicted_top
