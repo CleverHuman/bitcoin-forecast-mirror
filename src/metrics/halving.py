@@ -387,11 +387,15 @@ def create_double_top_regressor(
 ) -> pd.DataFrame:
     """Create a regressor column for Prophet modeling double-top cycle patterns.
 
+    IMPROVED: Uses Gaussian-weighted continuous encoding instead of binary steps.
+    This provides smooth transitions that Prophet handles better.
+
     The regressor encodes the expected position within the double-top cycle:
-    - 0.0: Outside double-top window
-    - 0.5: In first-top window (bullish)
-    - -0.5: In mid-cycle correction window (bearish)
-    - 0.5: In second-top window (bullish)
+    - Near 0: Outside double-top windows or low confidence
+    - Positive (up to ~0.5): Near expected top windows (bullish)
+    - Negative (down to ~-0.3): In mid-cycle correction window (bearish)
+
+    Values are weighted by double_top_frequency (confidence from historical data).
 
     Args:
         df: DataFrame with date column.
@@ -409,39 +413,59 @@ def create_double_top_regressor(
     df[date_col] = pd.to_datetime(df[date_col])
     df["double_top_regressor"] = 0.0
 
+    # If no double-top pattern detected historically, return zeros
     if averages.double_top_frequency == 0 or averages.avg_days_to_first_top == 0:
         return df
 
-    # Define windows based on historical averages
-    first_top_start = int(averages.avg_days_to_first_top - 60)
-    first_top_end = int(averages.avg_days_to_first_top + 30)
+    # Key timing parameters from historical data
+    first_top_day = averages.avg_days_to_first_top
+    second_top_day = averages.avg_days_to_second_top
+    mid_point = (first_top_day + second_top_day) / 2
 
-    # Mid-cycle correction (between tops)
-    mid_correction_start = first_top_end
-    mid_correction_end = int(averages.avg_days_to_second_top - 60)
+    # Estimate spread from days between tops, or use reasonable default
+    if averages.avg_days_between_tops > 0:
+        window_spread = averages.avg_days_between_tops / 4  # Each window is ~1/4 of gap
+    else:
+        window_spread = 45  # Default ~45 day window
 
-    # Second top window
-    second_top_start = mid_correction_end
-    second_top_end = int(averages.avg_days_to_second_top + 60)
+    # Confidence weight based on historical frequency
+    confidence = min(averages.double_top_frequency, 1.0)
 
     for h in halving_dates:
-        # First top window (bullish)
-        first_start = h + pd.Timedelta(days=first_top_start)
-        first_end = h + pd.Timedelta(days=first_top_end)
-        mask = (df[date_col] >= first_start) & (df[date_col] <= first_end)
-        df.loc[mask, "double_top_regressor"] = 0.5
+        # Calculate next halving for window end
+        h_idx = list(halving_dates).index(h)
+        if h_idx + 1 < len(halving_dates):
+            next_h = halving_dates[h_idx + 1]
+        else:
+            next_h = h + pd.Timedelta(days=1461)
 
-        # Mid-cycle correction (bearish)
-        mid_start = h + pd.Timedelta(days=mid_correction_start)
-        mid_end = h + pd.Timedelta(days=mid_correction_end)
-        mask = (df[date_col] >= mid_start) & (df[date_col] <= mid_end)
-        df.loc[mask, "double_top_regressor"] = -0.5
+        # Post-halving mask
+        post_mask = (df[date_col] >= h) & (df[date_col] < next_h)
+        if not post_mask.any():
+            continue
 
-        # Second top window (bullish)
-        sec_start = h + pd.Timedelta(days=second_top_start)
-        sec_end = h + pd.Timedelta(days=second_top_end)
-        mask = (df[date_col] >= sec_start) & (df[date_col] <= sec_end)
-        df.loc[mask, "double_top_regressor"] = 0.5
+        days_since = (df.loc[post_mask, date_col] - h).dt.days.values
+
+        # First top: Gaussian centered at first_top_day (bullish signal)
+        first_top_signal = np.exp(-((days_since - first_top_day) ** 2) / (2 * window_spread ** 2))
+
+        # Second top: Gaussian centered at second_top_day (bullish signal)
+        second_top_signal = np.exp(-((days_since - second_top_day) ** 2) / (2 * window_spread ** 2))
+
+        # Mid-cycle correction: Gaussian centered at mid_point (bearish signal)
+        mid_correction_signal = np.exp(-((days_since - mid_point) ** 2) / (2 * window_spread ** 2))
+
+        # Combine: tops are positive, mid-correction is negative
+        # Scale by confidence and reasonable magnitude
+        bullish_component = 0.5 * confidence * (first_top_signal + second_top_signal)
+        bearish_component = 0.3 * confidence * mid_correction_signal
+
+        regressor_value = bullish_component - bearish_component
+
+        # Clamp to reasonable range
+        regressor_value = np.clip(regressor_value, -0.4, 0.6)
+
+        df.loc[post_mask, "double_top_regressor"] = regressor_value
 
     return df
 
@@ -454,14 +478,14 @@ def create_cycle_phase_regressor(
 ) -> pd.DataFrame:
     """Create a continuous regressor encoding cycle phase for Prophet.
 
-    Encodes position within the halving cycle as a value from -1 to 1:
-    - Accumulation (bear market): -1 to -0.5
-    - Pre-halving run-up: -0.5 to 0
-    - Halving: 0
-    - Post-halving to first top: 0 to 1
-    - Mid-cycle correction (if double top): 1 to 0
-    - Second top (if double top): 0 to 1
-    - Distribution/drawdown: 1 to -1
+    VECTORIZED implementation - no per-row loops.
+
+    Encodes position within the halving cycle as a smooth value from -1 to 1:
+    - Pre-halving ramp: starts at -0.3, rises to 0 at halving
+    - Post-halving bull run: 0 to 0.8 (peaks at avg_days_to_top)
+    - Distribution/drawdown: 0.8 down to -0.3
+
+    Uses Gaussian smoothing to avoid discontinuities that crash Prophet.
 
     Args:
         df: DataFrame with date column.
@@ -479,6 +503,11 @@ def create_cycle_phase_regressor(
     df[date_col] = pd.to_datetime(df[date_col])
     df["cycle_phase_regressor"] = 0.0
 
+    # Use data-driven parameters or sensible defaults
+    peak_day = averages.avg_days_to_top if averages.avg_days_to_top > 0 else 365
+    bottom_day = averages.avg_days_to_bottom if averages.avg_days_to_bottom > 0 else 730
+    pre_ramp_days = averages.run_up_days if averages.run_up_days > 0 else 180
+
     cycle_length = 1461  # ~4 years
 
     for i, h in enumerate(halving_dates):
@@ -488,47 +517,50 @@ def create_cycle_phase_regressor(
         prev_h = halving_dates[i - 1]
         next_h = halving_dates[i + 1] if i + 1 < len(halving_dates) else h + pd.Timedelta(days=cycle_length)
 
-        pre_days = (h - prev_h).days
         post_days = (next_h - h).days
 
-        # Pre-halving: map days before halving to [-1, 0]
-        pre_mask = (df[date_col] >= prev_h) & (df[date_col] < h)
+        # Pre-halving ramp (last pre_ramp_days before halving)
+        ramp_start = h - pd.Timedelta(days=pre_ramp_days)
+        pre_mask = (df[date_col] >= ramp_start) & (df[date_col] < h)
         if pre_mask.any():
-            days_to_halving = (h - df.loc[pre_mask, date_col]).dt.days
-            df.loc[pre_mask, "cycle_phase_regressor"] = -days_to_halving / pre_days
+            days_to_halving = (h - df.loc[pre_mask, date_col]).dt.days.values
+            # Smooth ramp from -0.3 to 0
+            df.loc[pre_mask, "cycle_phase_regressor"] = -0.3 * (days_to_halving / pre_ramp_days)
 
-        # Post-halving: encode based on double-top pattern
+        # Post-halving: vectorized using np.where for different phases
         post_mask = (df[date_col] >= h) & (df[date_col] < next_h)
         if post_mask.any():
-            if averages.double_top_frequency > 0.5 and averages.avg_days_to_first_top > 0:
-                # Double-top pattern
-                first_top = averages.avg_days_to_first_top
-                second_top = averages.avg_days_to_second_top
-                mid_point = (first_top + second_top) / 2
+            days_since = (df.loc[post_mask, date_col] - h).dt.days.values
 
-                for idx in df.loc[post_mask].index:
-                    d = (df.loc[idx, date_col] - h).days
-                    if d <= first_top:
-                        df.loc[idx, "cycle_phase_regressor"] = d / first_top
-                    elif d <= mid_point:
-                        df.loc[idx, "cycle_phase_regressor"] = 1 - (d - first_top) / (mid_point - first_top)
-                    elif d <= second_top:
-                        df.loc[idx, "cycle_phase_regressor"] = (d - mid_point) / (second_top - mid_point)
-                    else:
-                        remaining = post_days - second_top
-                        if remaining > 0:
-                            df.loc[idx, "cycle_phase_regressor"] = 1 - 2 * (d - second_top) / remaining
-            else:
-                # Single-top pattern
-                peak_day = averages.avg_days_to_top if averages.avg_days_to_top > 0 else 365
-                for idx in df.loc[post_mask].index:
-                    d = (df.loc[idx, date_col] - h).days
-                    if d <= peak_day:
-                        df.loc[idx, "cycle_phase_regressor"] = d / peak_day
-                    else:
-                        remaining = post_days - peak_day
-                        if remaining > 0:
-                            df.loc[idx, "cycle_phase_regressor"] = 1 - 2 * (d - peak_day) / remaining
+            # Phase 1: Bull run (0 to peak_day) - ramps up smoothly
+            # Phase 2: Distribution (peak_day to bottom_day) - declines
+            # Phase 3: Bear/accumulation (bottom_day to next halving) - stays low
+
+            # Use smooth Gaussian-weighted transitions instead of linear
+            # Bull phase: Gaussian rising to peak at peak_day
+            bull_weight = np.exp(-((days_since - peak_day) ** 2) / (2 * (peak_day / 2) ** 2))
+
+            # Bear phase: starts after peak, deepest at bottom_day
+            bear_weight = np.where(
+                days_since > peak_day,
+                np.exp(-((days_since - bottom_day) ** 2) / (2 * 200 ** 2)),
+                0
+            )
+
+            # Combine: positive during bull, negative during bear
+            # Scale bull phase to max 0.8, bear phase to min -0.3
+            regressor_values = 0.8 * bull_weight - 0.3 * bear_weight
+
+            # Clamp to reasonable range to avoid Prophet issues
+            regressor_values = np.clip(regressor_values, -0.5, 1.0)
+
+            df.loc[post_mask, "cycle_phase_regressor"] = regressor_values
+
+        # Accumulation phase (between drawdown and pre-ramp)
+        acc_mask = (df[date_col] >= prev_h) & (df[date_col] < ramp_start)
+        if acc_mask.any():
+            # Stay at moderate negative during accumulation
+            df.loc[acc_mask, "cycle_phase_regressor"] = -0.2
 
     return df
 

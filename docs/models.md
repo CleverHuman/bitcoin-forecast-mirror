@@ -96,8 +96,111 @@ model, forecast = train_prophet_with_regressors(
     df,
     periods=365,
     use_cycle_regressors=True,  # Adds cycle_sin, cycle_cos, etc.
+    halving_averages=averages,  # Data-driven parameters
+    decay_params=decay_params,  # From fit_decay_curve()
 )
 ```
+
+---
+
+## Regressor System
+
+The ensemble model uses 5 configurable regressors for cycle-aware forecasting. All regressors use **data-driven parameters** from historical cycle analysis.
+
+### Regressor Overview
+
+| Regressor | Responsibility | Values | Env Variable |
+|-----------|---------------|--------|--------------|
+| **CYCLE** | Position in cycle (sin/cos, proximity) | -1 to 1 | `REGRESSOR_CYCLE` |
+| **DOUBLE_TOP** | Pattern detection (first/second top windows) | -0.4 to 0.6 | `REGRESSOR_DOUBLE_TOP` |
+| **CYCLE_PHASE** | Phase-specific behavior slopes | -0.5 to 1.0 | `REGRESSOR_CYCLE_PHASE` |
+| **DECAY** | Drawdown magnitude scaling | -0.08 to 0 | `REGRESSOR_DECAY` |
+| **ENSEMBLE_ADJUST** | Timing-based post-processing | ±15-20% | `REGRESSOR_ENSEMBLE_ADJUST` |
+
+### Configuration
+
+Toggle regressors in `.env`:
+
+```bash
+REGRESSOR_CYCLE=true
+REGRESSOR_DOUBLE_TOP=true
+REGRESSOR_CYCLE_PHASE=true
+REGRESSOR_DECAY=true
+REGRESSOR_ENSEMBLE_ADJUST=true
+```
+
+### Validation
+
+Check configuration for conflicts:
+
+```python
+from src.models import validate_regressor_config, print_regressor_responsibilities
+
+# Show what each regressor does
+print_regressor_responsibilities()
+
+# Check for known conflicts
+warnings = validate_regressor_config()
+# WARNING: DECAY + ENSEMBLE_ADJUST both reduce forecast post-365 days
+# INFO: CYCLE + CYCLE_PHASE both encode cycle position (potential redundancy)
+```
+
+### Known Conflicts
+
+| Conflict | Issue | Recommendation |
+|----------|-------|----------------|
+| DECAY + ENSEMBLE_ADJUST | Both reduce forecast during post-365-day period | Ensure magnitudes don't compound excessively |
+| CYCLE + CYCLE_PHASE | Both encode cycle position | May cause multicollinearity |
+| DOUBLE_TOP + CYCLE_PHASE | Both model post-halving behavior | Different focus: pattern vs smooth transitions |
+
+### Regressor Details
+
+#### CYCLE Regressor (`cycle_features.py`)
+
+Encodes position within the 4-year cycle:
+
+- **`reg_cycle_sin/cos`**: Sinusoidal encoding of cycle progress
+- **`reg_pre_halving`**: Ramps up as halving approaches (uses `run_up_days` from history)
+- **`reg_post_halving`**: Gaussian centered at `avg_days_to_top` (data-driven)
+
+```python
+# Parameters from halving_averages:
+post_halving_peak = averages.avg_days_to_top  # Was hardcoded 240
+post_halving_spread = averages.drawdown_days / 3  # Was hardcoded 150
+pre_halving_window = averages.run_up_days  # Was hardcoded 365
+```
+
+#### DOUBLE_TOP Regressor (`halving.py`)
+
+Detects double-top cycle pattern with Gaussian-weighted continuous encoding:
+
+- **Positive values (~0.5)**: Near expected top windows (bullish)
+- **Negative values (~-0.3)**: Mid-cycle correction (bearish)
+- **Values weighted by** `double_top_frequency` (historical confidence)
+
+#### CYCLE_PHASE Regressor (`halving.py`)
+
+Smooth phase encoding (vectorized, no per-row loops):
+
+- **Pre-halving ramp**: -0.3 → 0 as halving approaches
+- **Post-halving bull**: 0 → 0.8 (peaks at `avg_days_to_top`)
+- **Drawdown**: 0.8 → -0.3 (deepest at `avg_days_to_bottom`)
+
+#### DECAY Regressor (`decay.py`)
+
+Reduces forecast during expected drawdown period:
+
+- **Only active** after bull run peak (not during bull run)
+- **Timing from** `avg_days_to_top` and `avg_days_to_bottom`
+- **Values clamped** to [-0.08, 0] to prevent negative prices
+
+#### ENSEMBLE_ADJUST (`ensemble.py`)
+
+Post-processing adjustments to Prophet forecast:
+
+- **Pre-halving boost**: Computed from `run_up_pct / 2000` (max 20%)
+- **Bull run boost**: Computed from `run_up_pct / 2500` (max 18%)
+- **Distribution reduction**: Computed from `predicted_drawdown / 10` (max 8%)
 
 ## Signal Scoring
 
@@ -280,3 +383,219 @@ plt.show()
 # Save
 equity.to_csv("equity_curve.csv", index=False)
 ```
+
+---
+
+## Diagnostics Module
+
+Tools for analyzing regressor behavior and measuring individual contributions.
+
+### Ablation Testing
+
+Test each regressor's contribution by disabling them one at a time:
+
+```python
+from src.diagnostics import run_ablation_study, print_ablation_report
+
+# Run full study: baseline, pure Prophet, each regressor ablated
+results = run_ablation_study(df, holdout_days=90, forecast_periods=365)
+
+# Print comparison table
+print_ablation_report(results)
+```
+
+**Output:**
+```
+ABLATION STUDY REPORT
+===============================================================================
+--- FORECAST ACCURACY ---
+Configuration              MAPE         RMSE   vs Baseline
+baseline_all_on           12.34%      8,234
+pure_prophet              18.56%     12,456      +6.22%
+without_cycle             14.12%      9,567      +1.78%
+without_decay             13.89%      9,234      +1.55%
+...
+
+--- REGRESSOR CONTRIBUTION RANKING ---
+  cycle               MAPE delta: +1.78%  (HELPS)
+  decay               MAPE delta: +1.55%  (HELPS)
+  ensemble_adjust     MAPE delta: +0.89%  (HELPS)
+  ...
+```
+
+### Regressor Correlation
+
+Check for redundancy between regressors (high correlation > 0.5):
+
+```python
+from src.diagnostics import compute_regressor_correlation
+
+corr_matrix = compute_regressor_correlation(df_with_regressors)
+print(corr_matrix)
+```
+
+### AblationResult Fields
+
+| Field | Description |
+|-------|-------------|
+| `config_name` | Name of configuration tested |
+| `enabled_regressors` | Dict of which regressors were on |
+| `mape` | Mean Absolute Percentage Error |
+| `rmse` | Root Mean Square Error |
+| `sharpe_ratio` | From backtest |
+| `mape_delta` | Difference from baseline (positive = regressor helps) |
+
+---
+
+## Visualization Module
+
+Diagnostic plots for regressor analysis.
+
+### Regressor Timeseries
+
+Plot all regressor values over time with price:
+
+```python
+from src.viz import plot_regressor_timeseries
+
+fig = plot_regressor_timeseries(
+    df_with_regressors,
+    save_path="diagnostics/regressor_timeseries.png"
+)
+```
+
+### Correlation Heatmap
+
+Visualize correlations between regressors:
+
+```python
+from src.viz import plot_regressor_correlation
+
+fig = plot_regressor_correlation(
+    df_with_regressors,
+    save_path="diagnostics/correlation_heatmap.png"
+)
+```
+
+### Regressor vs Returns
+
+Scatter plots showing if regressors predict future returns:
+
+```python
+from src.viz import plot_regressor_vs_returns
+
+fig = plot_regressor_vs_returns(
+    df_with_regressors,
+    save_path="diagnostics/regressor_vs_returns.png"
+)
+```
+
+### Residuals by Phase
+
+Forecast errors colored by cycle phase:
+
+```python
+from src.viz import plot_residuals_by_phase
+
+fig = plot_residuals_by_phase(
+    df, forecast,
+    save_path="diagnostics/residuals_by_phase.png"
+)
+```
+
+### Full Diagnostic Report
+
+Generate all plots and summary statistics:
+
+```python
+from src.viz import create_diagnostic_report
+
+results = create_diagnostic_report(
+    df_with_regressors,
+    forecast,
+    output_dir="diagnostics/"
+)
+
+print(f"Generated: {results['plots']}")
+print(f"High correlations: {results['stats']['high_correlations']}")
+```
+
+---
+
+## Optimization Module
+
+Hyperparameter tuning for regressor parameters using Optuna.
+
+### Installation
+
+```bash
+pip install optuna
+```
+
+### Basic Usage
+
+```python
+from src.optimization import tune_regressors, print_tuning_report
+
+result = tune_regressors(
+    df,
+    n_trials=50,
+    holdout_days=90,
+    metric="mape",  # or "sharpe", "combined"
+)
+
+print_tuning_report(result)
+```
+
+### Tunable Parameters
+
+| Category | Parameters |
+|----------|-----------|
+| **CYCLE** | `post_halving_peak_day`, `post_halving_spread`, `pre_halving_window` |
+| **DOUBLE_TOP** | `first_top_day`, `second_top_day`, `top_window_spread` |
+| **DECAY** | `drawdown_start_day`, `drawdown_peak_day`, `drawdown_spread`, `max_decay_effect` |
+| **ENSEMBLE_ADJUST** | `pre_halving_boost`, `bull_run_boost`, `dist_reduction` |
+
+### Export Tuned Parameters
+
+Save best parameters to an env file:
+
+```python
+from src.optimization import export_params_to_env
+
+export_params_to_env(result.best_params, ".env.tuned")
+```
+
+### RegressorParams Defaults
+
+```python
+from src.optimization import RegressorParams
+
+params = RegressorParams(
+    # CYCLE
+    post_halving_peak_day=240,
+    post_halving_spread=150,
+    pre_halving_window=365,
+    # DOUBLE_TOP
+    first_top_day=280,
+    second_top_day=520,
+    top_window_spread=45,
+    # DECAY
+    drawdown_start_day=365,
+    drawdown_peak_day=550,
+    drawdown_spread=150,
+    max_decay_effect=0.05,
+    # ENSEMBLE_ADJUST
+    pre_halving_boost=0.15,
+    bull_run_boost=0.12,
+    dist_reduction=0.03,
+)
+```
+
+### Optimization Metrics
+
+| Metric | Description |
+|--------|-------------|
+| `mape` | Minimize Mean Absolute Percentage Error |
+| `sharpe` | Maximize Sharpe ratio from backtest |
+| `combined` | Weighted combination: MAPE - 0.5 * Sharpe |

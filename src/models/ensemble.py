@@ -39,6 +39,116 @@ def get_regressor_config() -> dict[str, bool]:
     }
 
 
+# Define regressor responsibilities and potential conflicts
+REGRESSOR_RESPONSIBILITIES = {
+    "cycle": "Position in cycle (sin/cos encoding, proximity to halving)",
+    "double_top": "Pattern detection (first/second top windows, mid-cycle correction)",
+    "cycle_phase": "Phase-specific behavior (bull run, distribution, accumulation slopes)",
+    "decay": "Drawdown magnitude scaling (reduces forecast during expected drawdown)",
+    "ensemble_adjust": "Timing-based post-processing (pre-halving boost, bull run boost, dist reduction)",
+}
+
+# Known potential conflicts between regressors
+REGRESSOR_CONFLICTS = [
+    {
+        "regressors": ["decay", "ensemble_adjust"],
+        "issue": "Both reduce forecast during post-365-day period",
+        "severity": "warning",
+        "recommendation": "Consider disabling one, or ensure magnitudes don't compound excessively",
+    },
+    {
+        "regressors": ["cycle", "cycle_phase"],
+        "issue": "Both encode cycle position (potential redundancy)",
+        "severity": "info",
+        "recommendation": "May cause multicollinearity; cycle_phase offers more granular control",
+    },
+    {
+        "regressors": ["double_top", "cycle_phase"],
+        "issue": "Both model post-halving behavior phases",
+        "severity": "info",
+        "recommendation": "double_top focuses on pattern; cycle_phase on smooth transitions",
+    },
+]
+
+
+def validate_regressor_config(
+    config: dict[str, bool] | None = None,
+    print_warnings: bool = True,
+) -> list[dict]:
+    """Validate regressor configuration for potential conflicts.
+
+    Checks for:
+    1. Conflicting regressors that may double-count effects
+    2. Potentially redundant regressors
+    3. Missing data requirements
+
+    Args:
+        config: Regressor configuration. If None, reads from environment.
+        print_warnings: Whether to print warnings to stdout.
+
+    Returns:
+        List of warning/info dicts with keys: severity, message, recommendation
+    """
+    if config is None:
+        config = get_regressor_config()
+
+    warnings = []
+
+    # Check for known conflicts
+    for conflict in REGRESSOR_CONFLICTS:
+        conflict_regs = conflict["regressors"]
+        if all(config.get(r, False) for r in conflict_regs):
+            warning = {
+                "severity": conflict["severity"],
+                "regressors": conflict_regs,
+                "message": conflict["issue"],
+                "recommendation": conflict["recommendation"],
+            }
+            warnings.append(warning)
+
+            if print_warnings:
+                severity_prefix = "WARNING" if conflict["severity"] == "warning" else "INFO"
+                print(f"  [{severity_prefix}] {', '.join(conflict_regs).upper()}: {conflict['issue']}")
+                print(f"            Recommendation: {conflict['recommendation']}")
+
+    # Check for all-off (pure Prophet)
+    if not any(config.values()):
+        warning = {
+            "severity": "info",
+            "regressors": [],
+            "message": "All regressors disabled - using pure Prophet forecast",
+            "recommendation": "Enable at least 'cycle' regressor for cycle-aware forecasting",
+        }
+        warnings.append(warning)
+        if print_warnings:
+            print(f"  [INFO] All regressors disabled - pure Prophet mode")
+
+    # Check for all-on (maximum coupling)
+    if all(config.values()):
+        warning = {
+            "severity": "info",
+            "regressors": list(config.keys()),
+            "message": "All regressors enabled - maximum cycle awareness but potential over-fitting",
+            "recommendation": "Monitor for over-correction; consider ablation testing",
+        }
+        warnings.append(warning)
+        if print_warnings:
+            print(f"  [INFO] All regressors enabled - full cycle awareness")
+
+    return warnings
+
+
+def print_regressor_responsibilities() -> None:
+    """Print the defined responsibility for each regressor."""
+    print("\n" + "=" * 70)
+    print("REGRESSOR RESPONSIBILITIES")
+    print("=" * 70)
+    for name, responsibility in REGRESSOR_RESPONSIBILITIES.items():
+        print(f"\n  {name.upper()}:")
+        print(f"    {responsibility}")
+    print("\n" + "=" * 70)
+
+
 def train_prophet_with_regressors(
     df: pd.DataFrame,
     periods: int = 240,
@@ -89,8 +199,11 @@ def train_prophet_with_regressors(
     print(f"  Regressors: cycle={enable_cycle}, double_top={enable_double_top}, "
           f"cycle_phase={enable_cycle_phase}, decay={enable_decay}")
 
+    # Validate configuration for conflicts
+    validate_regressor_config(cfg, print_warnings=True)
+
     if enable_cycle:
-        df = create_cycle_regressors_for_prophet(df)
+        df = create_cycle_regressors_for_prophet(df, halving_averages=halving_averages)
 
     if enable_double_top:
         df = create_double_top_regressor(df, halving_averages)
@@ -99,7 +212,7 @@ def train_prophet_with_regressors(
         df = create_cycle_phase_regressor(df, halving_averages)
 
     if enable_decay:
-        df = create_decay_regressor(df, decay_params, HALVING_DATES)
+        df = create_decay_regressor(df, decay_params, HALVING_DATES, halving_averages=halving_averages)
 
     model = Prophet(
         interval_width=0.95,
@@ -142,7 +255,7 @@ def train_prophet_with_regressors(
     future = model.make_future_dataframe(periods=periods, freq="d")
 
     if enable_cycle:
-        future = create_cycle_regressors_for_prophet(future)
+        future = create_cycle_regressors_for_prophet(future, halving_averages=halving_averages)
 
     if enable_double_top:
         future = create_double_top_regressor(future, halving_averages)
@@ -151,7 +264,7 @@ def train_prophet_with_regressors(
         future = create_cycle_phase_regressor(future, halving_averages)
 
     if enable_decay:
-        future = create_decay_regressor(future, decay_params, HALVING_DATES)
+        future = create_decay_regressor(future, decay_params, HALVING_DATES, halving_averages=halving_averages)
 
     forecast = model.predict(future)
 
@@ -215,29 +328,64 @@ def train_simple_ensemble(
     adjustment = np.ones(len(forecast))
 
     if cfg["ensemble_adjust"]:
-        # Pre-halving: boost forecast (run-up expected)
-        # Post-halving peak zone: reduce forecast (distribution)
-        # Drawdown: reduce forecast using decay-predicted severity
+        # DATA-DRIVEN boost/reduction parameters from halving_averages
+        # Compute adjustment magnitudes from historical cycle behavior
 
-        # Pre-halving run-up boost (up to +20%)
+        # Pre-halving boost: based on historical run-up percentage
+        if halving_averages is not None and halving_averages.run_up_pct > 0:
+            # Scale: if avg run-up is 300%, use ~15% boost; if 100%, use ~10%
+            # This provides proportional response to historical gains
+            pre_boost = min(0.20, halving_averages.run_up_pct / 2000)  # Cap at 20%
+        else:
+            pre_boost = 0.15  # Default 15%
+
+        # Bull run boost: based on historical post-halving gains
+        if halving_averages is not None and halving_averages.avg_days_to_top > 0:
+            bull_end_day = int(halving_averages.avg_days_to_top)
+            bull_start_day = 90  # Consolidation typically ends ~90 days after
+            # Scale boost by run-up magnitude
+            bull_boost = min(0.18, halving_averages.run_up_pct / 2500)
+        else:
+            bull_start_day = 120
+            bull_end_day = 365
+            bull_boost = 0.12
+
+        # Distribution/drawdown reduction: based on predicted drawdown
+        if predicted_drawdown > 0:
+            # Scale: if expected drawdown is 50%, reduce by ~3%; if 30%, reduce by ~2%
+            # This is a gentle nudge since Prophet's decay_regressor handles most
+            dist_reduction = min(0.08, predicted_drawdown / 10)
+        else:
+            dist_reduction = 0.03
+
+        # Apply adjustments
+
+        # Pre-halving run-up boost
         pre_mask = forecast["pre_halving_weight"] > 0
-        adjustment[pre_mask] += forecast.loc[pre_mask, "pre_halving_weight"] * 0.2
+        adjustment[pre_mask] += forecast.loc[pre_mask, "pre_halving_weight"] * pre_boost
 
         # Post-halving zones
         days_since = forecast["days_since_halving"].fillna(0)
 
-        # Bull run boost (120-365 days after)
-        bull_mask = (days_since > 120) & (days_since <= 365)
-        bull_factor = 1 - (days_since[bull_mask] - 120) / 245  # Fades from 1 to 0
-        adjustment[bull_mask] += bull_factor * 0.15
+        # Bull run boost: smooth ramp using Gaussian weighting
+        bull_mask = (days_since > bull_start_day) & (days_since <= bull_end_day)
+        if bull_mask.any():
+            peak_day = (bull_start_day + bull_end_day) / 2
+            spread = (bull_end_day - bull_start_day) / 3
+            bull_weight = np.exp(-((days_since[bull_mask] - peak_day) ** 2) / (2 * spread ** 2))
+            adjustment[bull_mask] += bull_weight * bull_boost
 
-        # Distribution/drawdown reduction
-        # Note: Prophet's decay_regressor handles most of the drawdown adjustment
-        # This is just a small additional nudge for the ensemble weighting
-        dist_mask = days_since > 365
-        adjustment[dist_mask] -= 0.05  # Small fixed reduction (Prophet handles the rest)
+        # Distribution/drawdown reduction (smooth ramp down)
+        dist_start = bull_end_day
+        dist_mask = days_since > dist_start
+        if dist_mask.any():
+            # Gradual increase in reduction, capped
+            days_into_dist = (days_since[dist_mask] - dist_start).values
+            reduction_factor = np.minimum(days_into_dist / 200, 1.0)  # Ramps to full over 200 days
+            adjustment[dist_mask] -= reduction_factor * dist_reduction
 
-        print(f"  Ensemble adjustment: enabled")
+        print(f"  Ensemble adjustment: enabled (pre_boost={pre_boost:.1%}, "
+              f"bull_boost={bull_boost:.1%}, dist_reduction={dist_reduction:.1%})")
     else:
         print(f"  Ensemble adjustment: disabled (using raw Prophet output)")
 

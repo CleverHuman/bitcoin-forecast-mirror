@@ -15,6 +15,11 @@ from .ensemble import (
     train_prophet_with_regressors,
     train_simple_ensemble,
     evaluate_forecast,
+    get_regressor_config,
+    validate_regressor_config,
+    print_regressor_responsibilities,
+    REGRESSOR_RESPONSIBILITIES,
+    REGRESSOR_CONFLICTS,
 )
 from .backtest import (
     BacktestConfig,
@@ -42,6 +47,11 @@ __all__ = [
     "train_prophet_with_regressors",
     "train_simple_ensemble",
     "evaluate_forecast",
+    "get_regressor_config",
+    "validate_regressor_config",
+    "print_regressor_responsibilities",
+    "REGRESSOR_RESPONSIBILITIES",
+    "REGRESSOR_CONFLICTS",
     # Backtest
     "BacktestConfig",
     "BacktestResult",

@@ -188,6 +188,9 @@ def plot_signals(
     fig.tight_layout()
     plt.subplots_adjust(bottom=0.1)
 
+    plt.show()
+    plt.close(fig)
+
     # Second figure: price only, linear scale
     fig2, ax = plt.subplots(1, 1, figsize=(16, 6))
     _draw_price_forecast(ax, df, forecast, last_historical, log_scale=False)
@@ -199,3 +202,4 @@ def plot_signals(
     fig2.tight_layout()
 
     plt.show()
+    plt.close(fig2)

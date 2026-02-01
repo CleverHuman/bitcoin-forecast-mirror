@@ -217,23 +217,28 @@ def create_decay_regressor(
     decay_params: tuple[float, float, float],
     halving_dates: pd.DatetimeIndex,
     date_col: str = "ds",
+    halving_averages: "HalvingAverages | None" = None,
 ) -> pd.DataFrame:
     """Create a regressor encoding expected drawdown magnitude for Prophet.
+
+    IMPROVED: Uses data-driven timing from halving_averages instead of hardcoded values.
+    Values are clamped to prevent Prophet from generating negative prices.
 
     The regressor value represents the expected drawdown severity at each date,
     based on the calibrated decay curve. Prophet learns how strongly to weight
     this signal.
 
     Values:
-    - 0.0: At or before halving (no drawdown expected yet)
-    - 0.0 to 1.0: During post-halving period, scaled by expected drawdown
-    - Higher values = more severe expected drawdown
+    - 0.0: At or before halving, or during bull run (no drawdown signal)
+    - Small negative: During expected drawdown period, scaled by severity
+    - Range is clamped to [-0.08, 0] to avoid extreme forecast reductions
 
     Args:
         df: DataFrame with date column.
         decay_params: Tuple of (a, b, c) from fit_decay_curve.
         halving_dates: Halving dates to use.
         date_col: Name of date column.
+        halving_averages: Optional HalvingAverages for data-driven timing.
 
     Returns:
         DataFrame with 'decay_regressor' column added.
@@ -244,10 +249,22 @@ def create_decay_regressor(
 
     a, b, c = decay_params
 
+    # Use data-driven timing if available, otherwise sensible defaults
+    if halving_averages is not None and halving_averages.avg_days_to_top > 0:
+        # Drawdown starts AFTER the top, peaks at bottom
+        drawdown_start = int(halving_averages.avg_days_to_top)
+        drawdown_peak = int(halving_averages.avg_days_to_bottom)
+        drawdown_spread = int(halving_averages.drawdown_days / 2) if halving_averages.drawdown_days > 0 else 150
+    else:
+        # Conservative defaults based on typical cycle patterns
+        drawdown_start = 365  # Bull run typically lasts ~1 year
+        drawdown_peak = 550   # Bottom typically ~550 days after halving
+        drawdown_spread = 150
+
     for i, h in enumerate(halving_dates):
         cycle_num = i + 1
 
-        # Expected drawdown for this cycle
+        # Expected drawdown for this cycle (0.0 to 1.0 as decimal)
         expected_drawdown = float(exp_decay(cycle_num, a, b, c))
 
         # Find next halving for window end
@@ -256,29 +273,37 @@ def create_decay_regressor(
         else:
             next_h = h + pd.Timedelta(days=1461)  # ~4 years
 
-        # Post-halving mask (where drawdown occurs)
-        post_mask = (df[date_col] >= h) & (df[date_col] < next_h)
+        # Only apply decay signal during drawdown period (after bull run peak)
+        drawdown_window_start = h + pd.Timedelta(days=drawdown_start)
+        drawdown_window_end = next_h - pd.Timedelta(days=180)  # Stop before pre-halving ramp
+
+        post_mask = (df[date_col] >= drawdown_window_start) & (df[date_col] < drawdown_window_end)
 
         if not post_mask.any():
             continue
 
-        # Calculate days since halving for timing weight
-        days_since = (df.loc[post_mask, date_col] - h).dt.days
+        # Calculate days since halving
+        days_since = (df.loc[post_mask, date_col] - h).dt.days.values
 
-        # Drawdown typically peaks 300-500 days after halving
-        # Use a bell curve centered around day 400
-        peak_day = 400
-        spread = 200
-        timing_weight = np.exp(-((days_since - peak_day) ** 2) / (2 * spread ** 2))
+        # Gaussian-weighted timing: peaks at drawdown_peak, falls off on both sides
+        timing_weight = np.exp(-((days_since - drawdown_peak) ** 2) / (2 * drawdown_spread ** 2))
 
-        # Scale for multiplicative mode: values should be small (-0.1 to 0.1)
-        # Negative = reduces forecast during drawdown period
-        # Scale expected_drawdown (0.3-0.8) to regressor range (-0.1 to -0.02)
-        regressor_scale = 0.15  # Max effect on forecast
+        # CRITICAL: Use much smaller regressor scale to prevent negative prices
+        # Prophet multiplicative mode: yhat = trend * (1 + regressor_effect)
+        # We want max reduction of ~5-8% during worst drawdown, not 15%+
+        max_regressor_effect = 0.05  # Maximum 5% reduction at peak
 
-        # Combine: negative value scaled by drawdown magnitude and timing
-        # Higher drawdown expectation = more negative regressor
-        regressor_value = -regressor_scale * expected_drawdown * timing_weight
+        # Scale by expected drawdown (higher = more reduction, but still bounded)
+        # expected_drawdown is typically 0.3-0.6 (30-60%)
+        # We use its relative severity, not absolute magnitude
+        severity_scale = min(expected_drawdown / 0.5, 1.0)  # Normalize to floor of 50%
+
+        # Final regressor: small negative value
+        regressor_value = -max_regressor_effect * severity_scale * timing_weight
+
+        # Clamp to safe range to absolutely prevent extreme values
+        regressor_value = np.clip(regressor_value, -0.08, 0.0)
+
         df.loc[post_mask, "decay_regressor"] = regressor_value
 
     return df

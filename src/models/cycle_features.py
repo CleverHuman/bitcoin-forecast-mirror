@@ -86,7 +86,11 @@ def get_cycle_phase(date: pd.Timestamp, halving_dates: pd.DatetimeIndex = None) 
         return CyclePhase.ACCUMULATION
 
 
-def add_cycle_features(df: pd.DataFrame, date_col: str = "ds") -> pd.DataFrame:
+def add_cycle_features(
+    df: pd.DataFrame,
+    date_col: str = "ds",
+    halving_averages: "HalvingAverages | None" = None,
+) -> pd.DataFrame:
     """Add halving cycle features to a DataFrame.
 
     Features added:
@@ -97,11 +101,13 @@ def add_cycle_features(df: pd.DataFrame, date_col: str = "ds") -> pd.DataFrame:
     - cycle_sin/cycle_cos: Sinusoidal encoding of cycle position
     - halving_proximity: 0-1 score (1 = at halving, 0 = mid-cycle)
     - pre_halving_weight: Higher weight closer to halving (for run-up)
-    - post_halving_weight: Higher weight after halving (for drawdown)
+    - post_halving_weight: Higher weight after halving (data-driven Gaussian)
 
     Args:
         df: DataFrame with a date column.
         date_col: Name of the date column.
+        halving_averages: Optional HalvingAverages for data-driven parameters.
+            If provided, uses avg_days_to_top and historical spread.
 
     Returns:
         DataFrame with cycle features added.
@@ -164,35 +170,53 @@ def add_cycle_features(df: pd.DataFrame, date_col: str = "ds") -> pd.DataFrame:
     df["halving_proximity"] = 1 - np.abs(2 * df["cycle_progress"] - 1)
 
     # Directional weights for run-up and drawdown
+    # Use data-driven parameters if available
+    if halving_averages is not None and halving_averages.run_up_days > 0:
+        pre_halving_window = int(halving_averages.run_up_days)
+    else:
+        pre_halving_window = 365  # Default: 1 year
+
+    if halving_averages is not None and halving_averages.avg_days_to_top > 0:
+        post_halving_peak = halving_averages.avg_days_to_top
+        # Estimate spread from drawdown duration or use reasonable default
+        post_halving_spread = halving_averages.drawdown_days / 3 if halving_averages.drawdown_days > 0 else 150
+    else:
+        post_halving_peak = 240  # Default fallback
+        post_halving_spread = 150
+
     # Pre-halving weight: increases as we approach halving
     df["pre_halving_weight"] = np.where(
-        df["days_until_halving"].notna() & (df["days_until_halving"] <= 365),
-        1 - (df["days_until_halving"] / 365),
+        df["days_until_halving"].notna() & (df["days_until_halving"] <= pre_halving_window),
+        1 - (df["days_until_halving"] / pre_halving_window),
         0,
     )
 
-    # Post-halving weight: peaks ~120-365 days after, then decays
+    # Post-halving weight: Gaussian centered at data-driven peak day
     df["post_halving_weight"] = np.where(
         df["days_since_halving"].notna(),
-        np.exp(-((df["days_since_halving"] - 240) ** 2) / (2 * 150**2)),  # Gaussian centered at 240 days
+        np.exp(-((df["days_since_halving"] - post_halving_peak) ** 2) / (2 * post_halving_spread**2)),
         0,
     )
 
     return df
 
 
-def create_cycle_regressors_for_prophet(df: pd.DataFrame) -> pd.DataFrame:
+def create_cycle_regressors_for_prophet(
+    df: pd.DataFrame,
+    halving_averages: "HalvingAverages | None" = None,
+) -> pd.DataFrame:
     """Create cycle-based regressors suitable for Prophet's add_regressor().
 
     Prophet regressors must be numeric and should be scaled 0-1 or standardized.
 
     Args:
         df: DataFrame with 'ds' column.
+        halving_averages: Optional HalvingAverages for data-driven Gaussian parameters.
 
     Returns:
         DataFrame with regressor columns added.
     """
-    df = add_cycle_features(df, date_col="ds")
+    df = add_cycle_features(df, date_col="ds", halving_averages=halving_averages)
 
     # Normalize days columns to 0-1 range
     max_cycle = 4 * 365
