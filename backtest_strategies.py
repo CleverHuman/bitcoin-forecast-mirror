@@ -100,37 +100,55 @@ Then run paper trading:
     args = parser.parse_args()
 
     end_date = args.end or datetime.now().strftime("%Y-%m-%d")
+    backtest_start = pd.Timestamp(args.start)
 
     print("=" * 70)
-    print("BTC STRATEGY COMPARISON (for paper/live strategy choice)")
+    print("BTC STRATEGY COMPARISON (NO LOOK-AHEAD BIAS)")
     print("=" * 70)
 
-    # 1. Load data
-    print("\n[1/4] Loading BTC data...")
-    df = fetch_btc_data(start_date=args.start, end_date=end_date)
-    print(f"  Loaded {len(df)} days of data")
-    print(f"  Date range: {df['ds'].min().date()} to {df['ds'].max().date()}")
+    # 1. Load ALL data (need historical for training, future for testing)
+    print("\n[1/5] Loading BTC data...")
+    # Load from 2015 for training history, regardless of backtest start
+    df_all = fetch_btc_data(start_date="2015-01-01", end_date=end_date)
+    print(f"  Total data: {len(df_all)} days ({df_all['ds'].min().date()} to {df_all['ds'].max().date()})")
 
-    # 2. Compute cycle metrics
-    print("\n[2/4] Computing cycle metrics...")
-    cycle_metrics = compute_cycle_metrics(df)
+    # 2. Split into train (before backtest) and test (backtest period)
+    print("\n[2/5] Splitting data (no look-ahead bias)...")
+    df_train = df_all[df_all["ds"] < backtest_start].copy()
+    df_test = df_all[df_all["ds"] >= backtest_start].copy()
+    print(f"  Training data: {len(df_train)} days (up to {args.start})")
+    print(f"  Backtest data: {len(df_test)} days ({df_test['ds'].min().date()} to {df_test['ds'].max().date()})")
+
+    if len(df_train) < 365:
+        print(f"  WARNING: Only {len(df_train)} days of training data. Consider earlier start date.")
+
+    # 3. Compute cycle metrics using ONLY training data
+    print("\n[3/5] Computing cycle metrics (training data only)...")
+    cycle_metrics = compute_cycle_metrics(df_train)
     averages = compute_halving_averages(cycle_metrics=cycle_metrics)
     print(f"  Analyzed {averages.n_cycles} complete halving cycles")
-    print(f"  Avg run-up: {averages.run_up_pct:.1f}%")
-    print(f"  Avg days to top: {averages.avg_days_to_top:.0f}")
+    if averages.n_cycles > 0:
+        print(f"  Avg run-up: {averages.run_up_pct:.1f}%")
+        print(f"  Avg days to top: {averages.avg_days_to_top:.0f}")
 
-    # 3. Generate forecast (optional - needed for ForecastBasedStrategy)
-    print("\n[3/4] Generating forecast...")
+    # 4. Generate forecast using ONLY training data
+    print("\n[4/5] Training forecast (on pre-backtest data only)...")
     forecaster = ProphetCycleForecaster(
         halving_averages=averages,
         cycle_metrics=cycle_metrics,
     )
-    result = forecaster.fit_predict(df, periods=365)
+    # Forecast far enough to cover the entire backtest period
+    forecast_periods = len(df_test) + 365
+    result = forecaster.fit_predict(df_train, periods=forecast_periods)
     forecast = result.forecast
-    print(f"  Forecast generated through {forecast['ds'].max().date()}")
+    print(f"  Forecast trained on data before {args.start}")
+    print(f"  Forecast covers: {forecast['ds'].min().date()} to {forecast['ds'].max().date()}")
 
-    # 4. Compare strategies
-    print("\n[4/4] Running backtests...")
+    # Use test data for backtesting
+    df = df_test
+
+    # 5. Compare strategies
+    print("\n[5/5] Running backtests...")
 
     config = BacktestConfig(
         initial_capital=args.capital,

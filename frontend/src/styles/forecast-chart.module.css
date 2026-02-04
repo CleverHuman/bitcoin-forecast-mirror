@@ -1,0 +1,11 @@
+.chartContainer {
+  /* position: relative;
+  height: 70vh;
+  width: 100%; */
+  }
+  
+  @media (orientation: portrait) {
+    .chartContainer {
+      aspect-ratio: 0.75;
+    }
+  }

@@ -1,0 +1,11 @@
+.ProseMirror {
+  .collaboration-cursor {
+    &__caret {
+      @apply border-r border-l border-black dark:border-white pointer-events-none -ml-[1px] -mr-[1px] relative break-normal;
+    }
+
+    &__label {
+      @apply rounded rounded-tl-none text-black dark:text-white text-xs font-semibold -left-[1px] leading-none py-0.5 px-1.5 absolute -top-[1.4em] select-none whitespace-nowrap dark:bg-black bg-white;
+    }
+  }
+}

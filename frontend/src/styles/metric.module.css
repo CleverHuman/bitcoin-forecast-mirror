@@ -1,0 +1,15 @@
+.metric-value {
+    @apply text-xl font-semibold;
+  }
+  
+  .metric-label {
+    @apply text-sm text-muted-foreground;
+  }
+  
+  .metric-additional {
+    @apply text-sm;
+  }
+  
+  .metric-icon {
+    @apply h-4 w-4 text-muted-foreground;
+  }

@@ -1,0 +1,23 @@
+.rdp {
+    --rdp-cell-size: 40px;
+    --rdp-accent-color: #22c55e;
+    --rdp-background-color: #e5e7eb;
+    /* Switch to dark colors for dark theme */
+    --rdp-accent-color-dark: #22c55e;
+    --rdp-background-color-dark: #374151;
+    margin: 1em;
+  }
+  
+  .rdp-day_selected:not([disabled]),
+  .rdp-day_selected:focus:not([disabled]),
+  .rdp-day_selected:active:not([disabled]),
+  .rdp-day_selected:hover:not([disabled]) {
+    background-color: var(--rdp-accent-color);
+  }
+  
+  .dark .rdp-day_selected:not([disabled]),
+  .dark .rdp-day_selected:focus:not([disabled]),
+  .dark .rdp-day_selected:active:not([disabled]),
+  .dark .rdp-day_selected:hover:not([disabled]) {
+    background-color: var(--rdp-accent-color-dark);
+  }
