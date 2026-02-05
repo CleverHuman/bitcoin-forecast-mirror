@@ -1,0 +1,203 @@
+Run timestamp: 20260205_214718
+Fetching BTC data from 2015-01-01 to 2026-02-05...
+Loaded 6736 rows.
+
+Computing halving cycle metrics...
+
+======================================================================
+HISTORICAL CYCLE DATA
+======================================================================
+
+Halving: 2016-07-09
+  DOUBLE TOP DETECTED:
+    1st TOP:  2017-12-17 @ $19,489
+              (526 days after halving)
+    Mid LOW:  2018-06-29 @ $5,928
+              (-69.6% correction)
+    2nd TOP:  2018-07-25 @ $8,259
+              (746 days after halving)
+              (220 days between tops)
+  BOTTOM: 2018-12-15 @ $3,170
+          (889 days after halving)
+  Run-up: 224.4% | Drawdown: 83.7%
+
+Halving: 2020-05-11
+  DOUBLE TOP DETECTED:
+    1st TOP:  2021-11-09 @ $67,518
+              (547 days after halving)
+    Mid LOW:  2022-06-19 @ $19,054
+              (-71.8% correction)
+    2nd TOP:  2022-07-20 @ $23,746
+              (800 days after halving)
+              (253 days between tops)
+  BOTTOM: 2022-11-22 @ $15,889
+          (925 days after halving)
+  Run-up: 3497.2% | Drawdown: 76.5%
+
+Halving: 2024-04-19
+  TOP:    2025-10-05 @ $123,942
+          (534 days after halving)
+  BOTTOM: 2026-02-04 @ $73,685
+          (656 days after halving)
+  Run-up: 746.8% | Drawdown: 40.5%
+
+----------------------------------------------------------------------
+LOGARITHMIC CYCLE ANALYSIS
+----------------------------------------------------------------------
+
+  Cycle | Top Price  | Bottom Price | Drawdown % | Log(Top) | Log(Bottom) | Log Drop
+  ---------------------------------------------------------------------------
+      1 | $   19,489 | $      3,170 |      83.7% |    4.290 |       3.501 |    0.789
+      2 | $   67,518 | $     15,889 |      76.5% |    4.829 |       4.201 |    0.628
+      3 | $  123,942 | $     73,685 |      40.5% |    5.093 |       4.867 |    0.226
+
+  Drawdown trend:
+    Cycle 1 → 2: -7.3% change in drawdown
+    Cycle 2 → 3: -35.9% change in drawdown
+
+----------------------------------------------------------------------
+AVERAGES
+----------------------------------------------------------------------
+  Cycles analyzed: 3
+  Avg run-up:      1489.5% over 723 days
+  Avg drawdown:    66.9% over 288 days
+  Avg days to TOP:    536 days after halving
+  Avg days to BOTTOM: 823 days after halving
+
+  DOUBLE TOP PATTERN:
+    Frequency:          67% of cycles
+    Avg days to 1st top: 536 days after halving
+    Avg days to 2nd top: 773 days after halving
+    Avg days between:    236 days
+    Avg mid-correction:  70.7%
+
+----------------------------------------------------------------------
+PREDICTED vs ACTUAL (Backtested)
+----------------------------------------------------------------------
+Using prior cycles to predict each halving:
+
+  Halving 2020-05-11 (using 1 prior cycle(s)):
+    TOP:
+      Predicted: 2021-10-19
+      Actual:    2021-11-09 @ $67,518
+      Error:     +21 days
+    BOTTOM:
+      Predicted: 2022-10-17
+      Actual:    2022-11-22 @ $15,889
+      Error:     +36 days
+
+  Halving 2024-04-19 (using 2 prior cycle(s)):
+    TOP:
+      Predicted: 2025-10-07
+      Actual:    2025-10-05 @ $123,942
+      Error:     -3 days
+    BOTTOM:
+      Predicted: 2026-10-13
+      Actual:    2026-02-04 @ $73,685
+      Error:     -251 days
+
+  Average absolute error:
+    TOP prediction:    12 days
+    BOTTOM prediction: 144 days
+
+----------------------------------------------------------------------
+DECAY CURVE FITTING
+----------------------------------------------------------------------
+
+  Formula: drawdown = a * exp(-b * cycle) + c
+  Where c = 20.0% (asymptotic floor as market matures)
+  Decay rate (b) = 0.4023
+
+  Fitted params: a=1.0000, b=0.4023, c=0.2000
+
+  Cycle | Actual DD | Fitted DD | Residual
+  ---------------------------------------------
+      1 |     83.7% |     86.9% |    -3.1%
+      2 |     76.5% |     64.7% |   +11.7%
+      3 |     40.5% |     49.9% |    -9.4%
+      4 |       ??? |     40.0% | (predicted)
+
+  Model fit (R²): 0.780
+
+----------------------------------------------------------------------
+PREDICTED BOTTOM (Buy Zone)
+----------------------------------------------------------------------
+  Last TOP:           2025-10-05 @ $123,942
+
+  Simple Average:
+    Drawdown:         66.9% over 288 days
+    Predicted date:   2026-07-19
+    Predicted price:  $41,005
+
+  Decay-Adjusted (accounts for market maturation):
+    Drawdown:         40.0% (floor: 20.0%)
+    Price range:      $52,413 - $96,310
+    Best estimate:    $74,361
+    Model fit (R²):   0.780
+======================================================================
+
+
+Training cycle-aware ensemble model (forecasting 1200 days)...
+  Decay-predicted drawdown for cycle 4: 40.0%
+  Regressors: cycle=True, double_top=True, cycle_phase=True, decay=True
+  [WARNING] DECAY, ENSEMBLE_ADJUST: Both reduce forecast during post-365-day period
+            Recommendation: Consider disabling one, or ensure magnitudes don't compound excessively
+  [INFO] CYCLE, CYCLE_PHASE: Both encode cycle position (potential redundancy)
+            Recommendation: May cause multicollinearity; cycle_phase offers more granular control
+  [INFO] DOUBLE_TOP, CYCLE_PHASE: Both model post-halving behavior phases
+            Recommendation: double_top focuses on pattern; cycle_phase on smooth transitions
+  [INFO] All regressors enabled - full cycle awareness
+  Ensemble adjustment: enabled (pre_boost=20.0%, bull_boost=18.0%, dist_reduction=4.0%)
+
+Generating buy/sell signals...
+Running backtest (capital=$50,000, position_size=100%)...
+
+============================================================
+CURRENT SIGNAL
+============================================================
+  Date: 2026-02-04 00:00:00
+  Price: $74,233
+  Signal: HOLD
+  Score: 0.08
+  Cycle Phase: drawdown
+  Days Until Halving: 797
+  Days Since Halving: 656
+  RSI: 5.9
+
+------------------------------------------------------------
+BUY TIMING GUIDANCE
+------------------------------------------------------------
+  >>> BUY NOW <<<
+  Price is at or below predicted bottom ($74,361)
+
+  Last cycle top: $123,942 on 2025-10-05
+
+  Predicted bottom (decay-adjusted):
+    Price range:  $63,207 - $85,515
+    Best estimate: $74,361
+    Expected drawdown: 40.0%
+
+  Current price vs predicted bottom: -0.2%
+  Days to predicted bottom: ~165
+
+  Recommendation: ACCUMULATE - Bear market, DCA opportunity
+
+============================================================
+BACKTEST RESULTS (Signal Strategy vs Buy & Hold)
+============================================================
+  Initial Capital: $50,000
+  Signal Strategy Final: $13,443 (-73.1%)
+  Buy & Hold Final: $15,732,685 (+31365.4%)
+  Outperformance: -99.9%
+  Number of Trades: 11
+============================================================
+
+
+Saving results to /Users/nickmoellers/Repos/Opie/bh_bitcoin_forecast/reports/...
+  Signals:  signals_20260205_214718.csv
+  Forecast: forecast_20260205_214718.csv
+  Report:   report_20260205_214718.txt
+
+Plotting...
+
+Done!
