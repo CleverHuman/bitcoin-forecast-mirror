@@ -39,6 +39,10 @@ env/
 .DS_Store
 Thumbs.db
 
+# Node / frontend
+node_modules/
+frontend/.contentlayer/
+
 # Output files
 #*.csv
 *.parquet
