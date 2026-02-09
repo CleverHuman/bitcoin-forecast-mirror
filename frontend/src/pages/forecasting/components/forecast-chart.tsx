@@ -177,7 +177,7 @@ const ForecastChart: React.FC<ForecastChartProps> = ({
 
         const forecastChartData = filteredForecastData.map((item) => ({
           time: new Date(item.ds).toISOString().split('T')[0],
-          value: item.yhat,
+          value: item.yhat_ensemble,
         }))
 
         forecastSeriesRef.current.setData(forecastChartData)
@@ -189,8 +189,8 @@ const ForecastChart: React.FC<ForecastChartProps> = ({
         const confidenceIntervalData: CustomBandData[] =
           filteredForecastData.map((item) => ({
             time: new Date(item.ds).toISOString().split('T')[0],
-            upper: Number(item.yhat_upper),
-            lower: Number(item.yhat_lower),
+            upper: Number(item.yhat_ensemble_upper),
+            lower: Number(item.yhat_ensemble_lower),
           }))
         bandIndicatorRef.current.setData(confidenceIntervalData)
       }

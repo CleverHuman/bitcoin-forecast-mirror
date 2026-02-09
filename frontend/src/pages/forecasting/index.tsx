@@ -25,6 +25,9 @@ import SidebarHistory from './components/sidebar-history'
 import { Button } from '@/registry/new-york/ui/button'
 import { PlayIcon } from 'lucide-react'
 import UploadCSVDialog from './components/upload-csv-dialog'
+import { runForecast } from '@/api/app/forecast'
+import type { ForecastRequest, ForecastProgressEvent, ForecastResponse } from '@/api/app/forecast'
+import { useToast } from '@/components/ui/use-toast'
 
 const ForecastingPage: React.FC = () => {
   const { data, currentCoinData, forecastData } = useSelector(
@@ -43,9 +46,9 @@ const ForecastingPage: React.FC = () => {
     )
   }, [data, forecastData])
 
-  const predictedPrice = todayForecast?.yhat || 0
-  const lowerBound = todayForecast?.yhat_lower || 0
-  const upperBound = todayForecast?.yhat_upper || 0
+  const predictedPrice = todayForecast?.yhat_ensemble || 0
+  const lowerBound = todayForecast?.yhat_ensemble_lower || 0
+  const upperBound = todayForecast?.yhat_ensemble_upper || 0
 
   const [isFullscreenOpen, setIsFullscreenOpen] = useState(false)
   const { theme } = useTheme()
@@ -69,20 +72,111 @@ const ForecastingPage: React.FC = () => {
     useState<ForecastHistoryItem | null>(null)
 
   const handleRunForecast = (forecast: ForecastHistoryItem) => {
-    if (forecast.id === 1) {
-      dispatch<any>(fetchForecastData('/sample/forecast.csv'))
-    } else if (forecast.id === 2) {
-      dispatch<any>(fetchForecastData('/sample/forecast2.csv'))
+    if (forecast.csv_path) {
+      console.log('Loading forecast from history:', forecast.csv_path)
+      toast({
+        title: 'Loading forecast...',
+        description: 'Fetching forecast data from history',
+      })
+
+      dispatch<any>(fetchForecastData(forecast.csv_path))
+        .then(() => {
+          console.log('Historical forecast loaded successfully')
+          toast({
+            title: 'Forecast Loaded',
+            description: 'Chart updated with historical forecast',
+          })
+        })
+        .catch((error: any) => {
+          console.error('Failed to load historical forecast:', error)
+          toast({
+            variant: 'destructive',
+            title: 'Failed to load forecast',
+            description: 'Could not load the selected forecast',
+          })
+        })
     }
     setIsCollapsed(false)
   }
 
   const [isCollapsed, setIsCollapsed] = useState(true)
   const [formForecastOpen, setFormForecastOpen] = useState(false)
+  const [historyRefreshTrigger, setHistoryRefreshTrigger] = useState(0)
+  const [currentProgress, setCurrentProgress] = useState<ForecastProgressEvent | null>(null)
+  const { toast } = useToast()
 
-  const handleCreateForecast = (_data: ForecastFormData) => {
+  const handleCreateForecast = (data: ForecastFormData) => {
     setSelectedForecast(null)
-    // Handle the forecast logic here
+    setCurrentProgress({ step: 0, total: 6, message: 'Initializing...' })
+
+    console.log('Starting forecast generation...')
+
+    toast({
+      title: 'Forecast Generation Started',
+      description: 'Watch the progress bar below for updates.',
+    })
+
+    // Calculate days between start_date and end_date
+    const startDate = new Date(data.start_date)
+    const endDate = new Date(data.end_date)
+    const daysDiff = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24))
+
+    const request: ForecastRequest = {
+      from_date: data.start_date,
+      days: daysDiff > 0 ? daysDiff : undefined,
+      no_signals: false, // Always generate signals for now
+    }
+
+    console.log('Forecast request:', request)
+
+    runForecast(request, {
+      onProgress: (progress: ForecastProgressEvent) => {
+        console.log('Progress update:', progress)
+        setCurrentProgress(progress)
+      },
+      onComplete: (result: ForecastResponse) => {
+        console.log('Forecast complete:', result)
+        setCurrentProgress(null)
+        toast({
+          title: 'Forecast Completed!',
+          description: `Successfully created ${result.forecast_file}. Loading results...`,
+        })
+
+        // Load the generated forecast CSV
+        const baseURL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000/api'
+        const csvUrl = `${baseURL}/forecast/file/${result.forecast_file}`
+        console.log('Loading forecast CSV from:', csvUrl)
+
+        dispatch<any>(fetchForecastData(csvUrl))
+          .then(() => {
+            console.log('Forecast data loaded successfully')
+            toast({
+              title: 'Forecast Loaded',
+              description: 'Chart updated with new forecast data',
+            })
+          })
+          .catch((error: any) => {
+            console.error('Failed to load forecast data:', error)
+            toast({
+              variant: 'destructive',
+              title: 'Failed to load forecast',
+              description: 'The forecast was created but could not be loaded for display',
+            })
+          })
+
+        // Trigger history refresh in sidebar
+        setHistoryRefreshTrigger(prev => prev + 1)
+      },
+      onError: (error: string) => {
+        console.error('Forecast error:', error)
+        setCurrentProgress(null)
+        toast({
+          variant: 'destructive',
+          title: 'Forecast Failed',
+          description: error,
+        })
+      },
+    })
   }
 
   const handleSelectForecast = (forecast: ForecastHistoryItem) => {
@@ -97,6 +191,15 @@ const ForecastingPage: React.FC = () => {
   }
 
   const handleUploadSuccess = () => {
+    toast({
+      title: 'CSV Loaded',
+      description: 'Chart updated with uploaded forecast data',
+    })
+    setIsCollapsed(false)
+  }
+
+  const handleOpenRunHistory = () => {
+    setHistoryRefreshTrigger(prev => prev + 1)
     setIsCollapsed(false)
   }
 
@@ -117,7 +220,7 @@ const ForecastingPage: React.FC = () => {
               <div className='w-full sm:w-auto'>
                 <Button
                   variant='outline'
-                  onClick={() => setIsCollapsed(false)}
+                  onClick={handleOpenRunHistory}
                   className='w-full sm:w-auto'
                 >
                   <PlayIcon className='mr-2 h-4 w-4' /> Run History
@@ -136,6 +239,25 @@ const ForecastingPage: React.FC = () => {
               </div>
             </div>
           </div>
+          {currentProgress && (
+            <div className='bg-primary/10 border-2 border-primary p-4 rounded-lg shadow-lg'>
+              <div className='flex items-center justify-between mb-2'>
+                <span className='text-base font-semibold text-primary'>
+                  🔄 Creating Forecast: Step {currentProgress.step} of {currentProgress.total}
+                </span>
+                <span className='text-sm font-bold text-primary'>
+                  {Math.round((currentProgress.step / currentProgress.total) * 100)}%
+                </span>
+              </div>
+              <div className='w-full bg-secondary rounded-full h-3 mb-2 overflow-hidden'>
+                <div
+                  className='bg-primary h-3 rounded-full transition-all duration-500 ease-out animate-pulse'
+                  style={{ width: `${(currentProgress.step / currentProgress.total) * 100}%` }}
+                />
+              </div>
+              <p className='text-sm font-medium'>{currentProgress.message}</p>
+            </div>
+          )}
           <div id='prediction-container' className='flex flex-col space-y-4 w-full mx-auto'>
             <Card className='flex flex-col py-2'>
               <div className='flex-shrink-0 px-2 pb-1 pt-1 sm:pb-2 sm:pt-1'>
@@ -174,6 +296,7 @@ const ForecastingPage: React.FC = () => {
         setIsCollapsed={setIsCollapsed}
         onRunForecast={handleRunForecast}
         onOpenForecast={handleSelectForecast}
+        refreshTrigger={historyRefreshTrigger}
       />
     </BasePageView>
   )

@@ -4,6 +4,7 @@ export type ForecastHistoryItem = {
   end_date: string
   trading_symbol: string
   side: string
+  csv_path: string
   dates: string[]
   events: string[]
   growth: 'linear' | 'logistic'
@@ -30,6 +31,7 @@ export const forecastDummyHistory: ForecastHistoryItem[] = [
     end_date: new Date(2024, 2, 15).toISOString().split('T')[0],
     trading_symbol: 'BTCUSDT',
     side: 'buy',
+    csv_path: '/reports/forecast_20260202_003635.csv',
     growth: 'linear',
     seasonality_mode: 'multiplicative',
     interval_width: 0.95,
@@ -54,9 +56,10 @@ export const forecastDummyHistory: ForecastHistoryItem[] = [
     end_date: new Date(2024, 2, 14).toISOString().split('T')[0],
     trading_symbol: 'BTCUSDT',
     side: 'sell',
+    csv_path: '/reports/forecast_20260202_003751.csv',
     growth: 'logistic',
     seasonality_mode: 'additive',
-    interval_width: 0.90,
+    interval_width: 0.9,
     changepoint_prior_scale: 0.2,
     changepoint_range: 0.7,
     n_changepoints: 200,
@@ -73,14 +76,40 @@ export const forecastDummyHistory: ForecastHistoryItem[] = [
     created_at: new Date(2024, 10, 10).toISOString().split('T')[0],
   },
   {
+    id: 3,
+    start_date: new Date(2024, 2, 14).toISOString().split('T')[0],
+    end_date: new Date(2024, 2, 14).toISOString().split('T')[0],
+    trading_symbol: 'BTCUSDT',
+    side: 'buy',
+    csv_path: '/reports/forecast_20260202_004654.csv',
+    growth: 'linear',
+    seasonality_mode: 'multiplicative',
+    interval_width: 0.92,
+    changepoint_prior_scale: 0.15,
+    changepoint_range: 0.75,
+    n_changepoints: 250,
+    seasonality_prior_scale: 9,
+    daily_seasonality: true,
+    weekly_seasonality: true,
+    yearly_seasonality: true,
+    holidays: null,
+    cap: 90000,
+    floor: 18000,
+    trading_volume: null,
+    dates: ['2024-04-19'],
+    events: ['4th Halving'],
+    created_at: new Date(2024, 10, 12).toISOString().split('T')[0],
+  },
+  {
     id: 4,
     start_date: new Date(2024, 2, 14).toISOString().split('T')[0],
     end_date: new Date(2024, 2, 14).toISOString().split('T')[0],
     trading_symbol: 'BTCUSDT',
     side: 'sell',
+    csv_path: '/reports/forecast_20260205_214718.csv',
     growth: 'logistic',
     seasonality_mode: 'additive',
-    interval_width: 0.90,
+    interval_width: 0.9,
     changepoint_prior_scale: 0.2,
     changepoint_range: 0.7,
     n_changepoints: 200,
@@ -94,7 +123,7 @@ export const forecastDummyHistory: ForecastHistoryItem[] = [
     trading_volume: null,
     dates: ['2024-04-19'],
     events: ['4th Halving'],
-    created_at: new Date(2024, 10, 10).toISOString().split('T')[0],
+    created_at: new Date(2024, 10, 20).toISOString().split('T')[0],
   },
 ]
 

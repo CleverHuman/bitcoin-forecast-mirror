@@ -158,16 +158,17 @@ function processData(prices: [number, number][], volumes: [number, number][]): C
 
 export interface ForecastData {
   ds: string
-  yhat: number
-  yhat_lower: number
-  yhat_upper: number
+  yhat_ensemble: number
+  yhat_ensemble_lower: number
+  yhat_ensemble_upper: number
   trend: number
   trend_lower: number
   trend_upper: number
-  y_moving_avg_7: number
-  y_moving_avg_14: number
-  y_moving_avg_28: number
-  y_moving_avg_90: number
+  cycle_phase?: string
+  days_since_halving?: number
+  days_until_halving?: number
+  cycle_progress?: number
+  [key: string]: any  // Allow additional columns from the forecast
 }
 
 export default cryptoSlice.reducer;

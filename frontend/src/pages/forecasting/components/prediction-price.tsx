@@ -51,9 +51,9 @@ export default function PredictionPrice() {
   function processForecastData(data: ForecastData[]): CryptoData[] {
     return data.map((item) => ({
       date: item.ds,
-      price: item.yhat,
-      uncertaintyLower: item.yhat_lower,
-      uncertaintyUpper: item.yhat_upper,
+      price: item.yhat_ensemble,
+      uncertaintyLower: item.yhat_ensemble_lower,
+      uncertaintyUpper: item.yhat_ensemble_upper,
       ma7: 0,
       ma14: 0,
       ma28: 0,
