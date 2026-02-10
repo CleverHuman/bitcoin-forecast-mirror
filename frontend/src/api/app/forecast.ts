@@ -4,6 +4,7 @@ export type ForecastRequest = {
   from_date?: string;
   days?: number;
   no_signals?: boolean;
+  trading_symbol?: string;
 };
 
 export type ForecastResponse = {
@@ -24,6 +25,7 @@ export type ForecastHistoryItem = {
   from_date?: string;
   forecast_points: number;
   file_size: number;
+  trading_symbol: string;
 };
 
 export type ForecastHistoryResponse = {

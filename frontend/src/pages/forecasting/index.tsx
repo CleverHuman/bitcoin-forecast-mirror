@@ -125,6 +125,7 @@ const ForecastingPage: React.FC = () => {
       from_date: data.start_date,
       days: daysDiff > 0 ? daysDiff : undefined,
       no_signals: false, // Always generate signals for now
+      trading_symbol: data.trading_symbol,
     }
 
     console.log('Forecast request:', request)

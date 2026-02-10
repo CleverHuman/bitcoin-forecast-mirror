@@ -137,8 +137,8 @@ export default function SidebarHistory({
                 }}
               >
                 <div className='flex flex-row justify-between w-full'>
-                  <span className='text-sm md:text-base'>
-                    {new Date(item.timestamp).toLocaleDateString()}
+                  <span className='text-sm md:text-base font-medium'>
+                    {item.trading_symbol} • {new Date(item.timestamp).toLocaleString()}
                   </span>
                 </div>
                 <div className='flex flex-col md:flex-row gap-1 md:gap-2'>

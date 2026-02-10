@@ -46,6 +46,7 @@ class ForecastRequest(BaseModel):
     from_date: Optional[str] = None
     days: Optional[int] = None
     no_signals: bool = False
+    trading_symbol: str = "BTCUSDT"
 
 
 def make_json_serializable(obj):
@@ -171,9 +172,20 @@ async def generate_forecast_sse(request: ForecastRequest):
         suffix = f"_{from_date}" if from_date else ""
         signals_path = REPORTS_DIR / f"signals_{timestamp}{suffix}.csv"
         forecast_path = REPORTS_DIR / f"forecast_{timestamp}{suffix}.csv"
+        metadata_path = REPORTS_DIR / f"forecast_{timestamp}{suffix}.json"
 
         df_signals.to_csv(signals_path, index=False)
         forecast.to_csv(forecast_path, index=False)
+
+        # Save metadata
+        metadata = {
+            "trading_symbol": request.trading_symbol,
+            "timestamp": timestamp,
+            "from_date": from_date,
+            "forecast_days": forecast_days,
+        }
+        with open(metadata_path, 'w') as f:
+            json.dump(metadata, f, indent=2)
 
         # Prepare final response
         response = {
@@ -245,6 +257,15 @@ def get_forecast_history():
                     # Check if there's a from_date suffix
                     from_date = name_parts[3] if len(name_parts) > 3 else None
 
+                    # Try to read metadata file
+                    metadata_path = file_path.with_suffix('.json')
+                    trading_symbol = "BTCUSDT"  # default
+
+                    if metadata_path.exists():
+                        with open(metadata_path, 'r') as f:
+                            metadata = json.load(f)
+                            trading_symbol = metadata.get("trading_symbol", "BTCUSDT")
+
                     # Read first few rows to get info
                     df = pd.read_csv(file_path, nrows=5)
 
@@ -254,6 +275,7 @@ def get_forecast_history():
                         "from_date": from_date,
                         "forecast_points": len(pd.read_csv(file_path)),
                         "file_size": file_path.stat().st_size,
+                        "trading_symbol": trading_symbol,
                     })
                 except Exception:
                     continue
