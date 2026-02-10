@@ -1,0 +1,334 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+
+
+
+@layer base {
+  :root {
+    --background: 0 0% 98%;
+    --foreground: 0 0% 0%;
+    --muted: 0 0% 96.1%;
+    --muted-foreground: 0 0% 45.1%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 0%;
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 0%;
+    --border: 0 0% 89.8%;
+    --input: 0 0% 89.8%;
+    --primary: 0 0% 0%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 0 0% 92%;
+    --secondary-foreground: 0 0% 0%;
+    --accent: 0 0% 92%;
+    --accent-foreground: 0 0% 0%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+    --ring: 0 0% 63.9%;
+    --radius: 0.5rem;
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 240 5.3% 26.1%;
+    --sidebar-primary: 240 5.9% 10%;
+    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-accent: 240 4.8% 95.9%;
+    --sidebar-accent-foreground: 240 5.9% 10%;
+    --sidebar-border: 220 13% 91%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+
+  .sample {
+    --background: 30 100% 96%;
+      --foreground: 0 0% 10%;
+      --muted: 30 20% 90%;
+      --muted-foreground: 0 0% 30%;
+      --popover: 0 0% 100%;
+      --popover-foreground: 0 0% 10%;
+      --card: 0 0% 100%;
+      --card-foreground: 0 0% 10%;
+      --border: 30 10% 80%;
+      --input: 30 10% 80%;
+      --primary: 97 66% 67%;
+      --primary-foreground: 0 0% 100%;
+      --secondary: 30 20% 80%;
+      --secondary-foreground: 0 0% 10%;
+      --accent: 30 30% 70%;
+      --accent-foreground: 0 0% 10%;
+      --destructive: 0 84% 60%;
+      --destructive-foreground: 0 0% 100%;
+      --ring: 97 66% 67%;
+      --radius: 0.5rem;
+  }
+
+  .dark {
+    --background: 287 52% 0%;
+    --foreground: 287 12% 98%;
+    --muted: 257 37% 5%;
+    --muted-foreground: 257 0% 70%;
+    --popover: 287 52% 0%;
+    --popover-foreground: 287 12% 98%;
+    --card: 216.67 0% 2.69%;
+    --card-foreground: 287 12% 98%;
+    --border: 287 2% 13%;
+    --input: 287 2% 13%;
+    --primary: 183.4 36.94% 47.75%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 267.17 52% 41.5%;
+    --secondary-foreground: 0 0% 100%;
+    --accent: 216.67 34.62% 10.2%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 2 96% 53%;
+    --destructive-foreground: 0 0% 100%;
+    --ring: 181.13 42.95% 46.82%;
+    --sidebar-background: 240 5.9% 10%;
+    --sidebar-foreground: 240 4.8% 95.9%;
+    --sidebar-primary: 224.3 76.3% 48%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 3.7% 15.9%;
+    --sidebar-accent-foreground: 240 4.8% 95.9%;
+    --sidebar-border: 240 3.7% 15.9%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+
+  /* .dark h2 {
+    color: white !important;
+  } */
+  .dark article h2 {
+    color: rgb(243, 244, 246) !important; /* Ensures text is white in dark mode */
+    margin-top: 1.5rem; /* Equivalent to Tailwind's mt-6 */
+  }
+  .light article h2 {
+    margin-top: 1.5rem; /* Equivalent to Tailwind's mt-6 */
+  }
+  
+  /* styles.css */
+  .collapsibleDropdown {
+    overflow: hidden;
+  }
+  .collapsibleDropdown[data-state='open'] {
+    animation: slideDown 200ms ease-out;
+  }
+  .collapsibleDropdown[data-state='closed'] {
+    animation: slideUp 200ms ease-out;
+  }
+
+  @keyframes slideDown {
+    from {
+      height: 0;
+    }
+    to {
+      height: var(--radix-collapsible-content-height);
+    }
+  }
+
+  @keyframes slideUp {
+    from {
+      height: var(--radix-collapsible-content-height);
+    }
+    to {
+      height: 0;
+    }
+  }
+
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply min-h-svh w-full bg-background text-foreground;
+  }
+  body > #root {
+    @apply h-svh;
+  }
+
+  /* Prevent focus zoom on mobile devices */
+  @media screen and (max-width: 767px) {
+    input,
+    select,
+    textarea {
+      font-size: 16px !important;
+    }
+  }
+}
+
+@layer utilities {
+  /* Hide scrollbar for Chrome, Safari and Opera */
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  /* Hide scrollbar for IE, Edge and Firefox */
+  .no-scrollbar {
+    -ms-overflow-style: none; /* IE and Edge */
+    scrollbar-width: none; /* Firefox */
+  }
+
+  /* .faded-bottom {
+    @apply after:pointer-events-none after:absolute after:bottom-0 after:left-0 after:hidden after:h-32 after:w-full after:bg-[linear-gradient(180deg,_transparent_10%,_hsl(var(--background))_70%)] after:md:block;
+  } */
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+.moon-image {
+  object-fit: cover;
+}
+
+.moon-shadow {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  background-color: #000000c8;
+  border-radius: 50%;
+}
+
+.moon-phase-display {
+  width: 60px;
+  height: 'auto';
+  position: relative;
+  overflow: hidden;
+  border-radius: 50%;
+}
+
+.prose {
+  @apply max-w-none;
+  line-height: 12.5mm;
+}
+
+.paper-lines {
+  position: relative;
+  background-color: transparent;
+  z-index: 2;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.paper-lines .prose {
+  flex: 1;
+  min-height: 100%;
+  padding-bottom: 2rem;
+  background-size: 100% 12.5mm;
+  background-position: 0 1.85rem;
+  background-attachment: local;
+}
+
+.paper-lines .prose h1 {
+  font-size: 25px;
+}
+
+.paper-lines .prose h1,
+.paper-lines .prose h2,
+.paper-lines .prose h3,
+.paper-lines .prose h4,
+.paper-lines .prose h5,
+.paper-lines .prose h6,
+.paper-lines .prose p:not(table p),
+.paper-lines .prose blockquote,
+.paper-lines .prose pre,
+.paper-lines .prose dl,
+.paper-lines .prose div {
+  position: relative;
+  line-height: 12.5mm;
+  margin: 0;
+  padding: 0;
+  min-height: 12.5mm;
+}
+
+.paper-lines .prose ul,
+.paper-lines .prose ol {
+  position: relative;
+  line-height: 12.5mm;
+  margin: 0;
+  padding-left: 2.5rem;
+  color: black !important;
+}
+
+.prose li::marker{
+  color: black !important;
+}
+
+.paper-lines .prose li {
+  position: relative;
+  line-height: 12.5mm;
+  margin: 0;
+  padding: 0;
+  min-height: 12.5mm;
+  color: black !important;
+}
+
+.paper-lines .prose p:first-child,
+.paper-lines .prose h1:first-child,
+.paper-lines .prose h2:first-child,
+.paper-lines .prose h3:first-child {
+  background-position: 0 1.85rem;
+}
+
+.paper-lines .prose table {
+  position: relative;
+  margin: 0;
+  width: 100%;
+  background-image: none;
+  border-collapse: collapse;
+  padding: 0;
+  color: black !important;
+  border: 1px solid black !important;
+  line-height: 12.5mm;
+  background-position: 0 0;
+  background-attachment: local;
+}
+
+.paper-lines .prose td,
+.paper-lines .prose th {
+  padding: 0 0.5rem;
+  text-align: left;
+  border: 1px solid black !important;
+  line-height: 12.5mm;
+  height: 12.5mm;
+  vertical-align: middle;
+  box-sizing: border-box;
+  background: transparent;
+}
+
+.paper-lines .prose td {
+  padding-top: 0rem;
+  padding-bottom: 0rem;
+  padding-left: 0.5rem;
+  padding-right: 0.5rem;
+  text-align: left;
+  border: 1px solid black !important;
+}
+
+.paper-lines .prose th {
+  padding-top: 0rem;
+  padding-bottom: 0rem;
+  padding-left: 0.5rem;
+  padding-right: 0.5rem;
+  border: 1px solid black !important;
+}
+
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+
+.hide-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}

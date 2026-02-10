@@ -1,0 +1,390 @@
+{
+    "title": "Triangle Printing Script",
+    "create_time": 1742378360.881203,
+    "update_time": 1742378365.245745,
+    "mapping": {
+      "client-created-root": {
+        "id": "client-created-root",
+        "message": null,
+        "parent": null,
+        "children": [
+          "6902d841-110f-4852-a1ad-e78cfd93724c"
+        ]
+      },
+      "6902d841-110f-4852-a1ad-e78cfd93724c": {
+        "id": "6902d841-110f-4852-a1ad-e78cfd93724c",
+        "message": {
+          "id": "6902d841-110f-4852-a1ad-e78cfd93724c",
+          "author": {
+            "role": "system",
+            "name": null,
+            "metadata": {}
+          },
+          "create_time": null,
+          "update_time": null,
+          "content": {
+            "content_type": "text",
+            "parts": [
+              ""
+            ]
+          },
+          "status": "finished_successfully",
+          "end_turn": true,
+          "weight": 0,
+          "metadata": {
+            "is_visually_hidden_from_conversation": true
+          },
+          "recipient": "all",
+          "channel": null
+        },
+        "parent": "client-created-root",
+        "children": [
+          "6b5bd9da-a6d8-4a74-82da-1104360b566e"
+        ]
+      },
+      "6b5bd9da-a6d8-4a74-82da-1104360b566e": {
+        "id": "6b5bd9da-a6d8-4a74-82da-1104360b566e",
+        "message": {
+          "id": "6b5bd9da-a6d8-4a74-82da-1104360b566e",
+          "author": {
+            "role": "user",
+            "name": null,
+            "metadata": {}
+          },
+          "create_time": 1742378360.172,
+          "update_time": null,
+          "content": {
+            "content_type": "text",
+            "parts": [
+              "create python script to prin triagle with *"
+            ]
+          },
+          "status": "finished_successfully",
+          "end_turn": null,
+          "weight": 1,
+          "metadata": {
+            "serialization_metadata": {
+              "custom_symbol_offsets": []
+            },
+            "request_id": "922c1dd12aa46d0c-CGK",
+            "message_source": null,
+            "timestamp_": "absolute",
+            "message_type": null
+          },
+          "recipient": "all",
+          "channel": null
+        },
+        "parent": "6902d841-110f-4852-a1ad-e78cfd93724c",
+        "children": [
+          "87283eba-c83f-47fe-b8bc-dc0ccaa15548"
+        ]
+      },
+      "87283eba-c83f-47fe-b8bc-dc0ccaa15548": {
+        "id": "87283eba-c83f-47fe-b8bc-dc0ccaa15548",
+        "message": {
+          "id": "87283eba-c83f-47fe-b8bc-dc0ccaa15548",
+          "author": {
+            "role": "assistant",
+            "name": null,
+            "metadata": {}
+          },
+          "create_time": 1742378364.48194,
+          "update_time": null,
+          "content": {
+            "content_type": "model_editable_context",
+            "model_set_context": "",
+            "repository": null,
+            "repo_summary": null,
+            "structured_context": null
+          },
+          "status": "finished_successfully",
+          "end_turn": null,
+          "weight": 1,
+          "metadata": {
+            "message_type": null,
+            "model_slug": "gpt-4o",
+            "default_model_slug": "auto",
+            "parent_id": "6b5bd9da-a6d8-4a74-82da-1104360b566e",
+            "request_id": "922c1dd12aa46d0c-CGK",
+            "timestamp_": "absolute",
+            "model_switcher_deny": []
+          },
+          "recipient": "all",
+          "channel": null
+        },
+        "parent": "6b5bd9da-a6d8-4a74-82da-1104360b566e",
+        "children": [
+          "7ceadb2e-9b82-4331-8e2e-071cffdd611a"
+        ]
+      },
+      "7ceadb2e-9b82-4331-8e2e-071cffdd611a": {
+        "id": "7ceadb2e-9b82-4331-8e2e-071cffdd611a",
+        "message": {
+          "id": "7ceadb2e-9b82-4331-8e2e-071cffdd611a",
+          "author": {
+            "role": "assistant",
+            "name": null,
+            "metadata": {}
+          },
+          "create_time": 1742378361.011276,
+          "update_time": null,
+          "content": {
+            "content_type": "text",
+            "parts": [
+              "Here's a simple Python script to print a triangle using `*`:"
+            ]
+          },
+          "status": "finished_successfully",
+          "end_turn": false,
+          "weight": 1,
+          "metadata": {
+            "finish_details": {
+              "type": "stop",
+              "stop_tokens": [
+                200007
+              ]
+            },
+            "is_complete": true,
+            "citations": [],
+            "content_references": [],
+            "message_type": null,
+            "model_slug": "gpt-4o",
+            "default_model_slug": "auto",
+            "parent_id": "87283eba-c83f-47fe-b8bc-dc0ccaa15548",
+            "request_id": "922c1dd12aa46d0c-CGK",
+            "timestamp_": "absolute",
+            "model_switcher_deny": []
+          },
+          "recipient": "all",
+          "channel": null
+        },
+        "parent": "87283eba-c83f-47fe-b8bc-dc0ccaa15548",
+        "children": [
+          "dca0e2a9-fa10-4aea-9fe1-cc59a456c4ff"
+        ]
+      },
+      "dca0e2a9-fa10-4aea-9fe1-cc59a456c4ff": {
+        "id": "dca0e2a9-fa10-4aea-9fe1-cc59a456c4ff",
+        "message": {
+          "id": "dca0e2a9-fa10-4aea-9fe1-cc59a456c4ff",
+          "author": {
+            "role": "assistant",
+            "name": null,
+            "metadata": {}
+          },
+          "create_time": 1742378361.531651,
+          "update_time": null,
+          "content": {
+            "content_type": "text",
+            "parts": [
+              "{\"name\": \"print_triangle\", \"type\": \"code/python\", \"content\": \"def print_triangle(n):\\n    for i in range(1, n + 1):\\n        print(\\\"*\\\" * i)\\n\\n# Set the height of the triangle\\nheight = 5\\nprint_triangle(height)\"}"
+            ]
+          },
+          "status": "finished_successfully",
+          "end_turn": false,
+          "weight": 1,
+          "metadata": {
+            "finish_details": {
+              "type": "stop",
+              "stop_tokens": [
+                200007
+              ]
+            },
+            "is_complete": true,
+            "citations": [],
+            "content_references": [],
+            "message_type": null,
+            "model_slug": "gpt-4o",
+            "default_model_slug": "auto",
+            "parent_id": "7ceadb2e-9b82-4331-8e2e-071cffdd611a",
+            "request_id": "922c1dd12aa46d0c-CGK",
+            "timestamp_": "absolute",
+            "model_switcher_deny": [
+              {
+                "slug": "o1-mini",
+                "context": "regenerate",
+                "reason": "unsupported_canvas",
+                "description": "Model ini tidak mendukung kanvas."
+              },
+              {
+                "slug": "o1-mini",
+                "context": "conversation",
+                "reason": "unsupported_canvas",
+                "description": "Model ini tidak mendukung kanvas."
+              },
+              {
+                "slug": "o3-mini",
+                "context": "regenerate",
+                "reason": "unsupported_canvas",
+                "description": "Model ini tidak mendukung kanvas."
+              },
+              {
+                "slug": "o3-mini",
+                "context": "conversation",
+                "reason": "unsupported_canvas",
+                "description": "Model ini tidak mendukung kanvas."
+              },
+              {
+                "slug": "gpt-4o-mini",
+                "context": "regenerate",
+                "reason": "unsupported_canvas",
+                "description": "Model ini tidak mendukung kanvas."
+              },
+              {
+                "slug": "gpt-4o-mini",
+                "context": "conversation",
+                "reason": "unsupported_canvas",
+                "description": "Model ini tidak mendukung kanvas."
+              }
+            ]
+          },
+          "recipient": "canmore.create_textdoc",
+          "channel": null
+        },
+        "parent": "7ceadb2e-9b82-4331-8e2e-071cffdd611a",
+        "children": [
+          "318aa935-f77d-4380-b8df-1e74e1b08289"
+        ]
+      },
+      "318aa935-f77d-4380-b8df-1e74e1b08289": {
+        "id": "318aa935-f77d-4380-b8df-1e74e1b08289",
+        "message": {
+          "id": "318aa935-f77d-4380-b8df-1e74e1b08289",
+          "author": {
+            "role": "tool",
+            "name": "canmore.create_textdoc",
+            "metadata": {}
+          },
+          "create_time": 1742378364.48229,
+          "update_time": null,
+          "content": {
+            "content_type": "text",
+            "parts": [
+              "Successfully created text document 'Print Triangle' which will be referenced in all future messages with the unique identifier textdoc_id: '67da957af88c8191964622f1f568bbf3'"
+            ]
+          },
+          "status": "finished_successfully",
+          "end_turn": null,
+          "weight": 0,
+          "metadata": {
+            "canvas": {
+              "textdoc_id": "67da957af88c8191964622f1f568bbf3",
+              "textdoc_type": "code/python",
+              "version": 1,
+              "title": "Print Triangle",
+              "create_source": "model"
+            },
+            "command": "create_textdoc",
+            "message_type": null,
+            "model_slug": "gpt-4o",
+            "default_model_slug": "auto",
+            "parent_id": "dca0e2a9-fa10-4aea-9fe1-cc59a456c4ff",
+            "request_id": "922c1dd12aa46d0c-CGK",
+            "timestamp_": "absolute"
+          },
+          "recipient": "all",
+          "channel": null
+        },
+        "parent": "dca0e2a9-fa10-4aea-9fe1-cc59a456c4ff",
+        "children": [
+          "a7092825-80d0-416a-b90c-a84558a4169d"
+        ]
+      },
+      "a7092825-80d0-416a-b90c-a84558a4169d": {
+        "id": "a7092825-80d0-416a-b90c-a84558a4169d",
+        "message": {
+          "id": "a7092825-80d0-416a-b90c-a84558a4169d",
+          "author": {
+            "role": "assistant",
+            "name": null,
+            "metadata": {}
+          },
+          "create_time": 1742378363.064974,
+          "update_time": null,
+          "content": {
+            "content_type": "text",
+            "parts": [
+              "This script prints a right-angled triangle with a height of 5. You can modify the `height` variable to adjust the size of the triangle. Let me know if you need a different pattern! 🚀"
+            ]
+          },
+          "status": "finished_successfully",
+          "end_turn": true,
+          "weight": 1,
+          "metadata": {
+            "finish_details": {
+              "type": "stop",
+              "stop_tokens": [
+                200002
+              ]
+            },
+            "is_complete": true,
+            "citations": [],
+            "content_references": [],
+            "message_type": null,
+            "model_slug": "gpt-4o",
+            "default_model_slug": "auto",
+            "parent_id": "318aa935-f77d-4380-b8df-1e74e1b08289",
+            "request_id": "922c1dd12aa46d0c-CGK",
+            "timestamp_": "absolute",
+            "model_switcher_deny": [
+              {
+                "slug": "o1-mini",
+                "context": "regenerate",
+                "reason": "unsupported_canvas",
+                "description": "Model ini tidak mendukung kanvas."
+              },
+              {
+                "slug": "o1-mini",
+                "context": "conversation",
+                "reason": "unsupported_canvas",
+                "description": "Model ini tidak mendukung kanvas."
+              },
+              {
+                "slug": "o3-mini",
+                "context": "regenerate",
+                "reason": "unsupported_canvas",
+                "description": "Model ini tidak mendukung kanvas."
+              },
+              {
+                "slug": "o3-mini",
+                "context": "conversation",
+                "reason": "unsupported_canvas",
+                "description": "Model ini tidak mendukung kanvas."
+              },
+              {
+                "slug": "gpt-4o-mini",
+                "context": "regenerate",
+                "reason": "unsupported_canvas",
+                "description": "Model ini tidak mendukung kanvas."
+              },
+              {
+                "slug": "gpt-4o-mini",
+                "context": "conversation",
+                "reason": "unsupported_canvas",
+                "description": "Model ini tidak mendukung kanvas."
+              }
+            ]
+          },
+          "recipient": "all",
+          "channel": null
+        },
+        "parent": "318aa935-f77d-4380-b8df-1e74e1b08289",
+        "children": []
+      }
+    },
+    "moderation_results": [],
+    "current_node": "a7092825-80d0-416a-b90c-a84558a4169d",
+    "plugin_ids": null,
+    "conversation_id": "67da9578-ae4c-800b-a0b4-f035dc292d73",
+    "conversation_template_id": null,
+    "gizmo_id": null,
+    "gizmo_type": null,
+    "is_archived": false,
+    "is_starred": null,
+    "safe_urls": [],
+    "default_model_slug": "auto",
+    "conversation_origin": null,
+    "voice": null,
+    "async_status": null,
+    "disabled_tool_ids": []
+  }

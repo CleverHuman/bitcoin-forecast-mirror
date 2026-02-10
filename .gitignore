@@ -39,11 +39,15 @@ env/
 .DS_Store
 Thumbs.db
 
+# Node / frontend
+node_modules/
+frontend/.contentlayer/
+
 # Output files
-*.csv
+#*.csv
 *.parquet
 
 # Reports (keep directory structure, ignore generated files)
-reports/*.csv
-reports/*.txt
+#reports/*.csv
+#reports/*.txt
 !reports/.gitkeep

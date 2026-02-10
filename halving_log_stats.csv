@@ -1,0 +1,4 @@
+halving_date,pre_low_price,pre_high_price,run_up_log,run_up_pct_from_log,post_high_price,post_low_price,drawdown_log,drawdown_pct_from_log
+9/7/2016,234,477,0.7133,104.1,19489,3170,-1.816,83.7
+11/5/2020,542,19489,3.5827,3497.2,67518,15889,-1.4468,76.5
+19/4/2024,8676,67518,2.0518,678.2,123942,80037,-0.4373,35.4

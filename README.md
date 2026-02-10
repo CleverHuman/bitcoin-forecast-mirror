@@ -38,9 +38,81 @@ python forecast_cycle.py
 
 # Full signals - cycle-aware forecast + buy/sell recommendations
 python forecast_signals.py
+
+# Compare trading strategies (decide which to use)
+python backtest_strategies.py --capital 50000
+
+# Paper trade with live prices
+python live_trader.py --capital 50000
 ```
 
-### Generate Buy/Sell Signals
+### Forecasting
+
+Use the forecasting module for price predictions:
+
+```python
+from src.forecasting import ProphetCycleForecaster, ProphetBasicForecaster
+from src.metrics import compute_cycle_metrics, compute_halving_averages
+
+# Compute cycle data
+cycle_metrics = compute_cycle_metrics(df)
+averages = compute_halving_averages(cycle_metrics=cycle_metrics)
+
+# Cycle-aware forecast (uses halving regressors)
+forecaster = ProphetCycleForecaster(
+    halving_averages=averages,
+    cycle_metrics=cycle_metrics,
+)
+result = forecaster.fit_predict(df, periods=365)
+forecast = result.forecast  # DataFrame with yhat, yhat_ensemble, etc.
+
+# Basic Prophet forecast (for comparison)
+basic = ProphetBasicForecaster()
+basic_result = basic.fit_predict(df, periods=365)
+```
+
+### Backtesting Strategies
+
+Compare trading strategies using the backtesting module:
+
+```python
+from src.backtesting import BacktestRunner, BacktestConfig, compare_strategies, print_comparison
+from src.backtesting.strategies import CycleSignalStrategy, ForecastBasedStrategy, BuyAndHoldStrategy
+
+# Configure backtest
+config = BacktestConfig(
+    initial_capital=10000,
+    position_size=0.25,
+    fee_pct=0.1,
+)
+
+# Compare strategies
+comparison = compare_strategies(df, [
+    CycleSignalStrategy(cycle_weight=0.6, halving_averages=averages),
+    ForecastBasedStrategy(forecast_col="yhat_ensemble"),
+    BuyAndHoldStrategy(),
+], config=config, forecast=forecast)
+
+print_comparison(comparison)
+```
+
+### Backtest then paper trade
+
+1. **Run backtests** to compare strategies and pick one:
+   ```bash
+   python backtest_strategies.py --capital 50000
+   # Optional: --start 2020-01-01 --end 2025-01-01
+   # Summary is saved to reports/backtest_summary.csv
+   ```
+   Strategies: Combined (cycle + forecast + technicals), Halving Cycle, Forecast-Based, Forecast Momentum, Buy & Hold.
+
+2. **Run paper trading** with live prices (no real orders):
+   ```bash
+   python live_trader.py --capital 50000
+   ```
+   The live bot uses forecast + tactical logic (closest backtest analogue: **Combined**). It refreshes the forecast every 24h and logs live price and B&H comparison.
+
+### Generate Buy/Sell Signals (Legacy API)
 
 ```python
 from dotenv import load_dotenv
@@ -60,15 +132,6 @@ current = get_current_signal(df)
 print(f"Signal: {current['signal']}")           # strong_buy, buy, hold, sell, strong_sell
 print(f"Phase: {current['cycle_phase']}")       # accumulation, pre_halving_runup, etc.
 print(f"Recommendation: {current['recommendation']}")
-```
-
-### Cycle-Aware Forecast
-
-```python
-from src.models import train_simple_ensemble
-
-# Prophet + cycle position adjustments
-forecast = train_simple_ensemble(df, periods=365)
 ```
 
 ## How It Works
@@ -174,14 +237,27 @@ bh_bitcoin_forecast/
 │   │   └── connector.py      # Databricks connector
 │   ├── diagnostics/
 │   │   └── regressor_ablation.py  # Ablation testing
+│   ├── forecasting/          # Price forecasters (NEW)
+│   │   ├── base.py           # BaseForecaster interface
+│   │   ├── prophet_basic.py  # Basic Prophet (baseline)
+│   │   └── prophet_cycle.py  # Prophet + cycle regressors (main)
+│   ├── backtesting/          # Strategy backtesting (NEW)
+│   │   ├── strategies/
+│   │   │   ├── base.py       # BaseStrategy interface
+│   │   │   ├── cycle_signals.py   # Halving cycle strategy (primary)
+│   │   │   ├── forecast_based.py  # Trade on forecast direction
+│   │   │   └── buy_and_hold.py    # Baseline benchmark
+│   │   ├── runner.py         # BacktestRunner
+│   │   ├── metrics.py        # Performance metrics
+│   │   └── comparison.py     # Compare strategies
 │   ├── metrics/
 │   │   ├── halving.py        # Cycle metrics, double-top, cycle-phase
 │   │   └── decay.py          # Decay curve fitting
 │   ├── models/
 │   │   ├── cycle_features.py # Cycle position encoding
-│   │   ├── signals.py        # Buy/sell signals
-│   │   ├── ensemble.py       # Prophet + cycle ensemble + validation
-│   │   └── backtest.py       # Advanced backtesting
+│   │   ├── signals.py        # Buy/sell signals (legacy)
+│   │   ├── ensemble.py       # Prophet + cycle ensemble
+│   │   └── backtest.py       # Advanced backtesting (legacy)
 │   ├── optimization/
 │   │   └── regressor_tuning.py  # Optuna hyperparameter search
 │   └── viz/
@@ -190,6 +266,7 @@ bh_bitcoin_forecast/
 ├── forecast.py               # Basic forecast
 ├── forecast_cycle.py         # With halving metrics
 ├── forecast_signals.py       # Full signals + recommendations
+├── backtest_strategies.py    # Compare trading strategies (NEW)
 └── requirements.txt
 ```
 

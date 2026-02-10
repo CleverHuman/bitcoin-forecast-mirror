@@ -6,6 +6,7 @@ from .regressor_diagnostics import (
     plot_residuals_by_phase,
     create_diagnostic_report,
 )
+from .backtest_chart import plot_backtest, save_backtest_chart
 
 __all__ = [
     "plot_signals",
@@ -14,4 +15,6 @@ __all__ = [
     "plot_regressor_vs_returns",
     "plot_residuals_by_phase",
     "create_diagnostic_report",
+    "plot_backtest",
+    "save_backtest_chart",
 ]
