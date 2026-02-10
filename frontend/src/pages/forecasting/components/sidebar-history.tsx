@@ -138,7 +138,7 @@ export default function SidebarHistory({
               >
                 <div className='flex flex-row justify-between w-full'>
                   <span className='text-sm md:text-base'>
-                    {formatDateVariants.dateAgoShort(new Date(item.timestamp))}
+                    {new Date(item.timestamp).toLocaleDateString()}
                   </span>
                 </div>
                 <div className='flex flex-col md:flex-row gap-1 md:gap-2'>
